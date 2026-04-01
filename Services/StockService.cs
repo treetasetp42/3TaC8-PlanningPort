@@ -1,4 +1,6 @@
-﻿using System.Net.Http;
+﻿using _3TaC8_PlanningPort.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Net.Http;
 using System.Text.Json;
 
 namespace _3TaC8_PlanningPort.Services
@@ -7,11 +9,13 @@ namespace _3TaC8_PlanningPort.Services
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _config;
+        private readonly ApplicationDbContext _context;
 
-        public StockService(HttpClient httpClient, IConfiguration config)
+        public StockService(HttpClient httpClient, IConfiguration config, ApplicationDbContext context)
         {
             _httpClient = httpClient;
             _config = config;
+            _context = context;  
         }
         public async Task<decimal> GetCurrentPriceAsync(string symbol)
         {
@@ -39,6 +43,31 @@ namespace _3TaC8_PlanningPort.Services
             }
 
             return 0;
+        }
+        public async Task<decimal> GetPriceWithCacheAsync(string symbol)
+        {
+            var marketPrice = await GetCurrentPriceAsync(symbol); // ดึงจาก API [cite: 2026-04-01]
+
+            if (marketPrice > 0)
+            {
+                // อัปเดตลง Cache ใน DB [cite: 2026-04-01]
+                var cache = await _context.StockCaches.FindAsync(symbol.ToUpper());
+                if (cache == null)
+                {
+                    _context.StockCaches.Add(new StockCache { Symbol = symbol.ToUpper(), LastPrice = marketPrice });
+                }
+                else
+                {
+                    cache.LastPrice = marketPrice;
+                    cache.UpdatedAt = DateTime.UtcNow;
+                }
+                await _context.SaveChangesAsync();
+                return marketPrice;
+            }
+
+            // ถ้า API ล่ม/ออฟไลน์ ให้ไปดึงจาก Cache [cite: 2026-04-01]
+            var savedCache = await _context.StockCaches.FindAsync(symbol.ToUpper());
+            return savedCache?.LastPrice ?? 0;
         }
     }
 }
