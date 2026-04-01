@@ -1,4 +1,4 @@
-﻿📈 3TaC8-PlanningPort Backend Setup Guide
+**﻿📈 3TaC8-PlanningPort Backend Setup Guide**
 
 คู่มือสำหรับการ Setup ระบบ Backend (ASP.NET Core Web API) และ Database (SQL Server) เมื่อมีการ Pull Code ไปรันที่เครื่องใหม่
 
@@ -42,7 +42,7 @@ Update-Database
 วางโครงสร้าง JSON นี้ลงไป (เปลี่ยน Connection String ตามชื่อเครื่องใหม่):
 
 JSON
-{
+>{
   "ConnectionStrings": {
     "DefaultConnection": "Server=ชื่อเครื่องใหม่;Database=3TaC8-DATABASE;User Id=devpp;Password=รหัสผ่าน;TrustServerCertificate=True;"
   },
