@@ -13,6 +13,7 @@ namespace _3TaC8_PlanningPort.Data
         public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Watchlist> Watchlists { get; set; }
         public DbSet<StockCache> StockCaches { get; set; }
+        public DbSet<UserLog> UserLogs { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -21,7 +22,7 @@ namespace _3TaC8_PlanningPort.Data
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.RemoteUser).IsRequired().HasMaxLength(255);
-                entity.HasIndex(e => e.RemoteUser).IsUnique();
+                entity.HasIndex(e => e.RemoteUser).IsUnique(); 
             });
             modelBuilder.Entity<Transaction>(entity =>
             {
@@ -34,6 +35,13 @@ namespace _3TaC8_PlanningPort.Data
                       .OnDelete(DeleteBehavior.Cascade); // ถ้าลบ User ให้ลบ Transaction ของเขาด้วย
 
                 entity.Property(e => e.Symbol).IsRequired();
+            });
+            modelBuilder.Entity<UserLog>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Action).IsRequired();
+                // ให้ SQL Server ใส่เวลาปัจจุบันให้อัตโนมัติถ้าเราไม่ได้ส่งไป [cite: 2026-04-02]
+                entity.Property(e => e.Timestamp).HasDefaultValueSql("GETUTCDATE()");
             });
         }
     }
