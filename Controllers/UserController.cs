@@ -2,6 +2,7 @@
 using _3TaC8_PlanningPort.DTOs;
 using _3TaC8_PlanningPort.Entities;
 using BCrypt.Net;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -13,6 +14,7 @@ namespace _3TaC8_PlanningPort.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class UserController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -44,6 +46,7 @@ namespace _3TaC8_PlanningPort.Controllers
                 return StatusCode(500, ex.InnerException?.Message ?? ex.Message);
             }
         }
+        [AllowAnonymous]
         [HttpPost("register")]
         public async Task<ActionResult> Register(CreateUserRequest request)
         {
@@ -68,7 +71,7 @@ namespace _3TaC8_PlanningPort.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
-
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<ActionResult> Login(CreateUserRequest request)
         {

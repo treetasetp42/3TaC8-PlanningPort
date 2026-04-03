@@ -131,13 +131,17 @@ namespace _3TaC8_PlanningPort.Controllers
 
             var summaryList = new List<object>();
             decimal totalPortfolioValue = 0;
+            decimal totalProfitLoss = 0;
 
-            // 3. ดึงราคาปัจจุบันมาคำนวณมูลค่ารวม (ใช้ Cache/API) [cite: 2026-04-02]
+            // 3. ดึงราคาปัจจุบันมาคำนวณมูลค่ารวม (ใช้ Cache/API)  
             foreach (var item in portfolioItems)
             {
                 var currentPrice = await _stockService.GetPriceWithSnapshotAsync(item.Symbol);
                 var currentValue = item.TotalQty * currentPrice;
+                var profitLoss = currentValue - item.TotalCost; // คำนวณรายตัว [cite: 2026-04-02]
+
                 totalPortfolioValue += currentValue;
+                totalProfitLoss += profitLoss; // 2. สะสมกำไรรวม [cite: 2026-04-02]
 
                 summaryList.Add(new
                 {
@@ -146,7 +150,7 @@ namespace _3TaC8_PlanningPort.Controllers
                     item.Subtype,
                     Holdings = item.TotalQty,
                     CurrentValue = currentValue,
-                    ProfitLoss = currentValue - item.TotalCost
+                    ProfitLoss = profitLoss
                 });
             }
 
@@ -164,6 +168,7 @@ namespace _3TaC8_PlanningPort.Controllers
             return Ok(new
             {
                 TotalValue = totalPortfolioValue,
+                TotalProfit = totalProfitLoss,  
                 Assets = summaryList,
                 Allocation = allocation
             });
