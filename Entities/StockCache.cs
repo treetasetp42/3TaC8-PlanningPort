@@ -1,9 +1,12 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 public class StockCache
 {
-    [Key]
-    public string Symbol { get; set; } = string.Empty; // ใช้ Symbol เป็น Key เลย
+    [Key, Column(Order = 0)]
+    public string Symbol { get; set; } = string.Empty; // Ticker only, e.g. AAPL
+    [Key, Column(Order = 1)]
+    public string Exchange { get; set; } = "NASDAQ";   // e.g. NASDAQ, NYSE, BINANCE
     public decimal LastPrice { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

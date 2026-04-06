@@ -1,4 +1,4 @@
-﻿using _3TaC8_PlanningPort.Data;
+using _3TaC8_PlanningPort.Data;
 using _3TaC8_PlanningPort.DTOs;
 using _3TaC8_PlanningPort.Entities;
 using _3TaC8_PlanningPort.Services;
@@ -139,20 +139,24 @@ namespace _3TaC8_PlanningPort.Controllers
                 var currentPrice = await _stockService.GetPriceWithSnapshotAsync(item.Symbol);
                 var currentValue = item.TotalQty * currentPrice;
                 var profitLoss = currentValue - item.TotalCost; // คำนวณรายตัว [cite: 2026-04-02]
-
+ 
                 totalPortfolioValue += currentValue;
                 totalProfitLoss += profitLoss; // 2. สะสมกำไรรวม [cite: 2026-04-02]
-
+ 
                 summaryList.Add(new
                 {
                     item.Symbol,
                     item.AssetType,
                     item.Subtype,
                     Holdings = item.TotalQty,
+                    AverageCost = item.TotalQty > 0 ? item.TotalCost / item.TotalQty : 0,
                     CurrentValue = currentValue,
+                    CurrentPrice = currentPrice,
                     ProfitLoss = profitLoss
                 });
             }
+ 
+            decimal totalInvestment = portfolioItems.Sum(x => x.TotalCost);
 
             // 4. สรุปสัดส่วนตาม AssetType (Stock vs Crypto) [cite: 2026-03-20, 2026-04-01]
             var allocation = summaryList.Cast<dynamic>()
@@ -168,11 +172,48 @@ namespace _3TaC8_PlanningPort.Controllers
             return Ok(new
             {
                 TotalValue = totalPortfolioValue,
+                TotalInvestment = totalInvestment,
                 TotalProfit = totalProfitLoss,  
                 Assets = summaryList,
                 Allocation = allocation
             });
         }
 
+        // PUT: api/Transaction/update
+        [HttpPut("update")]
+        public async Task<ActionResult> UpdateTransaction(Guid userId, string symbol, TransactionRequest request)
+        {
+            var latestTx = await _context.Transactions
+                .Where(t => t.UserId == userId && t.Symbol == symbol.ToUpper())
+                .OrderByDescending(t => t.TransactionDate)
+                .FirstOrDefaultAsync();
+ 
+            if (latestTx == null) return NotFound("Transaction not found");
+ 
+            latestTx.Quantity = request.Quantity;
+            latestTx.PricePerUnit = request.PricePerUnit;
+            latestTx.Subtype = request.Subtype;
+            latestTx.AssetType = request.AssetType;
+            latestTx.TransactionDate = DateTime.UtcNow; // Update timestamp
+ 
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Transaction updated successfully" });
+        }
+ 
+        // DELETE: api/Transaction/delete
+        [HttpDelete("delete")]
+        public async Task<ActionResult> DeleteTransaction(Guid userId, string symbol)
+        {
+            var txs = await _context.Transactions
+                .Where(t => t.UserId == userId && t.Symbol == symbol.ToUpper())
+                .ToListAsync();
+ 
+            if (!txs.Any()) return NotFound("No transactions found to delete");
+ 
+            _context.Transactions.RemoveRange(txs);
+            await _context.SaveChangesAsync();
+ 
+            return NoContent();
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using _3TaC8_PlanningPort.Entities; 
+using _3TaC8_PlanningPort.Entities; 
 using Microsoft.EntityFrameworkCore;
 
 namespace _3TaC8_PlanningPort.Data
@@ -42,6 +42,11 @@ namespace _3TaC8_PlanningPort.Data
                 entity.Property(e => e.Action).IsRequired();
                 // ให้ SQL Server ใส่เวลาปัจจุบันให้อัตโนมัติถ้าเราไม่ได้ส่งไป [cite: 2026-04-02]
                 entity.Property(e => e.Timestamp).HasDefaultValueSql("GETUTCDATE()");
+            });
+            modelBuilder.Entity<StockCache>(entity =>
+            {
+                // Composite primary key: Exchange + Symbol prevents collisions (e.g. NASDAQ:AAPL vs NYSE:AAPL)
+                entity.HasKey(e => new { e.Symbol, e.Exchange });
             });
         }
     }

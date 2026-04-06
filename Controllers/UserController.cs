@@ -1,4 +1,4 @@
-﻿using _3TaC8_PlanningPort.Data;
+using _3TaC8_PlanningPort.Data;
 using _3TaC8_PlanningPort.DTOs;
 using _3TaC8_PlanningPort.Entities;
 using BCrypt.Net;
@@ -109,6 +109,14 @@ namespace _3TaC8_PlanningPort.Controllers
             });
         }
 
+        [HttpGet("me")]
+        public IActionResult GetCurrentUser()
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            return Ok(new { userId });
+        }
+ 
         private string GenerateJwtToken(User user)
         {
             var claims = new[] {
