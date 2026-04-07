@@ -87,7 +87,8 @@ namespace _3TaC8_PlanningPort.Controllers
             var avgCost = buyQty > 0 ? totalCost / buyQty : 0;
 
             // 3. ดึงราคา Real-time จาก Finnhub API [cite: 2026-04-01]
-            var marketPrice = await _stockService.GetPriceWithSnapshotAsync(symbol);  
+            var priceData = await _stockService.GetPriceWithSnapshotAsync(symbol);  
+            var marketPrice = priceData.CurrentPrice;
 
             // 4. คำนวณ Profit / Loss [cite: 2026-04-01]
             var currentValue = currentQty * marketPrice;
@@ -136,7 +137,8 @@ namespace _3TaC8_PlanningPort.Controllers
             // 3. ดึงราคาปัจจุบันมาคำนวณมูลค่ารวม (ใช้ Cache/API)  
             foreach (var item in portfolioItems)
             {
-                var currentPrice = await _stockService.GetPriceWithSnapshotAsync(item.Symbol);
+                var priceData = await _stockService.GetPriceWithSnapshotAsync(item.Symbol);
+                var currentPrice = priceData.CurrentPrice;
                 var currentValue = item.TotalQty * currentPrice;
                 var profitLoss = currentValue - item.TotalCost; // คำนวณรายตัว [cite: 2026-04-02]
  

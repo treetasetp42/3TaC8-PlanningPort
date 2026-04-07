@@ -5,6 +5,13 @@ using System.Text.Json;
 
 namespace _3TaC8_PlanningPort.Services
 {
+    public class StockPriceResponse
+    {
+        public decimal CurrentPrice { get; set; }
+        public decimal Change { get; set; }
+        public decimal PercentChange { get; set; }
+    }
+
     public class StockService
     {
         private readonly HttpClient _httpClient;
@@ -42,7 +49,7 @@ namespace _3TaC8_PlanningPort.Services
             return exchange == "BINANCE" ? $"BINANCE:{symbol}" : symbol;
         }
 
-        public async Task<decimal> GetCurrentPriceAsync(string symbol, string exchange = "NASDAQ")
+        public async Task<StockPriceResponse> GetCurrentPriceAsync(string symbol, string exchange = "NASDAQ")
         {
             var apiKey = _config["Finnhub:ApiKey"];
             var finnhubSymbol = BuildFinnhubSymbol(exchange, symbol.ToUpper());
@@ -56,10 +63,15 @@ namespace _3TaC8_PlanningPort.Services
                 var content = await response.Content.ReadAsStringAsync();
                 using var json = JsonDocument.Parse(content);
 
-                // 'c' ใน Finnhub คือ Current Price (ราคาปัจจุบัน)
+                // 'c' = Current Price, 'd' = Change, 'dp' = Percent Change
                 if (json.RootElement.TryGetProperty("c", out var priceElement))
                 {
-                    return priceElement.GetDecimal();
+                    return new StockPriceResponse
+                    {
+                        CurrentPrice = priceElement.GetDecimal(),
+                        Change = json.RootElement.TryGetProperty("d", out var change) ? change.GetDecimal() : 0,
+                        PercentChange = json.RootElement.TryGetProperty("dp", out var pc) ? pc.GetDecimal() : 0
+                    };
                 }
             }
             catch (Exception ex)
@@ -67,10 +79,10 @@ namespace _3TaC8_PlanningPort.Services
                 Console.WriteLine($"Error fetching price for {exchange}:{symbol}: {ex.Message}");
             }
 
-            return 0;
+            return new StockPriceResponse { CurrentPrice = 0, Change = 0, PercentChange = 0 };
         }
 
-        public async Task<decimal> GetPriceWithSnapshotAsync(string symbol, string exchange = "NASDAQ")
+        public async Task<StockPriceResponse> GetPriceWithSnapshotAsync(string symbol, string exchange = "NASDAQ")
         {
             var upperSymbol = symbol.ToUpper();
             var upperExchange = exchange.ToUpper();
@@ -81,23 +93,33 @@ namespace _3TaC8_PlanningPort.Services
 
             if (cachedData != null && (DateTime.UtcNow - cachedData.UpdatedAt).TotalMinutes < 5)
             {
-                return cachedData.LastPrice;
+                return new StockPriceResponse 
+                { 
+                    CurrentPrice = cachedData.LastPrice,
+                    Change = cachedData.DailyChange,
+                    PercentChange = cachedData.DailyPercentChange
+                };
             }
 
             // 2. Fetch fresh price from Finnhub
-            var marketPrice = await GetCurrentPriceAsync(upperSymbol, upperExchange);
+            var marketData = await GetCurrentPriceAsync(upperSymbol, upperExchange);
 
-            if (marketPrice > 0)
+            if (marketData.CurrentPrice > 0)
             {
-                await UpdateStockCache(upperSymbol, upperExchange, marketPrice);
-                return marketPrice;
+                await UpdateStockCache(upperSymbol, upperExchange, marketData);
+                return marketData;
             }
 
             // 3. Fallback: return stale cache if API fails
-            return cachedData?.LastPrice ?? 0;
+            return new StockPriceResponse
+            {
+                CurrentPrice = cachedData?.LastPrice ?? 0,
+                Change = cachedData?.DailyChange ?? 0,
+                PercentChange = cachedData?.DailyPercentChange ?? 0
+            };
         }
 
-        private async Task UpdateStockCache(string symbol, string exchange, decimal price)
+        private async Task UpdateStockCache(string symbol, string exchange, StockPriceResponse data)
         {
             var cache = await _context.StockCaches
                 .FirstOrDefaultAsync(c => c.Symbol == symbol && c.Exchange == exchange);
@@ -108,13 +130,17 @@ namespace _3TaC8_PlanningPort.Services
                 {
                     Symbol = symbol,
                     Exchange = exchange,
-                    LastPrice = price,
+                    LastPrice = data.CurrentPrice,
+                    DailyChange = data.Change,
+                    DailyPercentChange = data.PercentChange,
                     UpdatedAt = DateTime.UtcNow
                 });
             }
             else
             {
-                cache.LastPrice = price;
+                cache.LastPrice = data.CurrentPrice;
+                cache.DailyChange = data.Change;
+                cache.DailyPercentChange = data.PercentChange;
                 cache.UpdatedAt = DateTime.UtcNow;
             }
             await _context.SaveChangesAsync();
