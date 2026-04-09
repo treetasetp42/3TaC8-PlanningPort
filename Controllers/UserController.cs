@@ -113,8 +113,9 @@ namespace _3TaC8_PlanningPort.Controllers
         public IActionResult GetCurrentUser()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var username = User.FindFirst(ClaimTypes.Name)?.Value;
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
-            return Ok(new { userId });
+            return Ok(new { userId, username });
         }
  
         private string GenerateJwtToken(User user)

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace _3TaC8_PlanningPort.Entities
@@ -34,6 +34,7 @@ namespace _3TaC8_PlanningPort.Entities
         // สำหรับข้อ 6: Dashboard & Filtering
         public string AssetType { get; set; } = "Stock"; // เช่น Stock, Crypto, Index
         public string? Subtype { get; set; } // เช่น Tech, S&P500, US, TH
+        public string Exchange { get; set; } = "NASDAQ"; // เช่น NASDAQ, BINANCE
 
         public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

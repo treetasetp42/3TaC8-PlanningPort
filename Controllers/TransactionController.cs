@@ -23,6 +23,37 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPost("add")]
         public async Task<ActionResult> AddTransaction(Guid userId, TransactionRequest request)
         {
+            var wallet = await _context.CashWallets.FirstOrDefaultAsync(w => w.UserId == userId);
+            if (wallet == null)
+            {
+                wallet = new CashWallet { UserId = userId, Balance = 0 };
+                _context.CashWallets.Add(wallet);
+            }
+
+            decimal totalAmount = request.Quantity * request.PricePerUnit;
+
+            if (request.Type == "Buy")
+            {
+                if (wallet.Balance < totalAmount) return BadRequest("Insufficient buying power (Cash Balance)");
+                wallet.Balance -= totalAmount;
+            }
+            else if (request.Type == "Sell")
+            {
+                // Calculate Realized Profit based on Weighted Average Cost
+                var txs = await _context.Transactions
+                    .Where(t => t.UserId == userId && t.Symbol == request.Symbol.ToUpper() && t.Exchange == request.Exchange.ToUpper())
+                    .ToListAsync();
+                
+                var totalBuyQty = txs.Where(t => t.Type == "Buy").Sum(t => t.Quantity);
+                var totalBuyCost = txs.Where(t => t.Type == "Buy").Sum(t => t.Quantity * t.PricePerUnit);
+                decimal avgCost = totalBuyQty > 0 ? totalBuyCost / totalBuyQty : 0;
+
+                decimal realizedProfit = (request.PricePerUnit - avgCost) * request.Quantity;
+                
+                wallet.Balance += totalAmount;
+                wallet.TotalRealizedProfit += realizedProfit;
+            }
+
             var transaction = new Transaction
             {
                 UserId = userId,
@@ -33,13 +64,16 @@ namespace _3TaC8_PlanningPort.Controllers
                 Currency = request.Currency,
                 AssetType = request.AssetType,
                 Subtype = request.Subtype,
+                Exchange = request.Exchange.ToUpper(),
                 TransactionDate = request.TransactionDate
             };
 
             _context.Transactions.Add(transaction);
+            wallet.LastUpdated = DateTime.UtcNow;
+
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Transaction recorded successfully" });
+            return Ok(new { message = "Transaction recorded and wallet updated successfully" });
         }
 
         // GET: api/Transaction/summary/{userId}/{symbol}
@@ -106,6 +140,17 @@ namespace _3TaC8_PlanningPort.Controllers
                 ProfitPercentage = Math.Round(profitPercentage, 2) + "%"
             });
         }
+        [HttpGet("history/{userId}")]
+        public async Task<ActionResult> GetTransactionHistory(Guid userId)
+        {
+            var txs = await _context.Transactions
+                .Where(t => t.UserId == userId)
+                .OrderByDescending(t => t.TransactionDate)
+                .ToListAsync();
+
+            return Ok(txs);
+        }
+
         // GET: api/Transaction/dashboard/{userId}
         [HttpGet("dashboard/{userId}")]
         public async Task<IActionResult> GetDashboardSummary(Guid userId)
@@ -117,10 +162,11 @@ namespace _3TaC8_PlanningPort.Controllers
 
             if (!allTxs.Any()) return NotFound("ไม่พบข้อมูลการลงทุน");
 
-            // 2. แยกกลุ่มตาม Symbol เพื่อหาจำนวนที่ถือครองและต้นทุน [cite: 2026-04-01, 2026-04-02]
-            var portfolioItems = allTxs.GroupBy(t => t.Symbol)
+            // 2. แยกกลุ่มตาม Symbol + Exchange เพื่อหาจำนวนที่ถือครองและต้นทุน [cite: 2026-04-01, 2026-04-02, 2026-04-09]
+            var portfolioItems = allTxs.GroupBy(t => new { t.Symbol, t.Exchange })
                 .Select(g => new {
-                    Symbol = g.Key,
+                    Symbol = g.Key.Symbol,
+                    Exchange = g.Key.Exchange,
                     AssetType = g.First().AssetType,
                     Subtype = g.First().Subtype,
                     TotalQty = g.Where(t => t.Type == "Buy").Sum(t => t.Quantity) -
@@ -137,7 +183,7 @@ namespace _3TaC8_PlanningPort.Controllers
             // 3. ดึงราคาปัจจุบันมาคำนวณมูลค่ารวม (ใช้ Cache/API)  
             foreach (var item in portfolioItems)
             {
-                var priceData = await _stockService.GetPriceWithSnapshotAsync(item.Symbol);
+                var priceData = await _stockService.GetPriceWithSnapshotAsync(item.Symbol, item.Exchange);
                 var currentPrice = priceData.CurrentPrice;
                 var currentValue = item.TotalQty * currentPrice;
                 var profitLoss = currentValue - item.TotalCost; // คำนวณรายตัว [cite: 2026-04-02]
@@ -148,6 +194,7 @@ namespace _3TaC8_PlanningPort.Controllers
                 summaryList.Add(new
                 {
                     item.Symbol,
+                    item.Exchange,
                     item.AssetType,
                     item.Subtype,
                     Holdings = item.TotalQty,
@@ -171,11 +218,18 @@ namespace _3TaC8_PlanningPort.Controllers
                         : "0%"
                 });
 
+            var wallet = await _context.CashWallets.FirstOrDefaultAsync(w => w.UserId == userId);
+            decimal cashBalance = wallet?.Balance ?? 0;
+            decimal totalRealizedProfit = wallet?.TotalRealizedProfit ?? 0;
+
             return Ok(new
             {
-                TotalValue = totalPortfolioValue,
+                TotalValue = totalPortfolioValue + cashBalance, // Net Worth [cite: 2026-04-09]
+                CashBalance = cashBalance,
+                RealizedProfit = totalRealizedProfit,
                 TotalInvestment = totalInvestment,
-                TotalProfit = totalProfitLoss,  
+                AssetValue = totalPortfolioValue,
+                TotalUnrealizedProfit = totalProfitLoss,
                 Assets = summaryList,
                 Allocation = allocation
             });
@@ -196,6 +250,7 @@ namespace _3TaC8_PlanningPort.Controllers
             latestTx.PricePerUnit = request.PricePerUnit;
             latestTx.Subtype = request.Subtype;
             latestTx.AssetType = request.AssetType;
+            latestTx.Exchange = request.Exchange.ToUpper();
             latestTx.TransactionDate = DateTime.UtcNow; // Update timestamp
  
             await _context.SaveChangesAsync();

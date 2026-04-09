@@ -14,9 +14,17 @@ namespace _3TaC8_PlanningPort.Data
         public DbSet<Watchlist> Watchlists { get; set; }
         public DbSet<StockCache> StockCaches { get; set; }
         public DbSet<UserLog> UserLogs { get; set; }
+        public DbSet<CashWallet> CashWallets { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<CashWallet>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.UserId).IsUnique(); // One wallet per user
+            });
 
             modelBuilder.Entity<User>(entity =>
             {

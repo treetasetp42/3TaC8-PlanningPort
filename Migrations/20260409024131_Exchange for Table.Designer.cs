@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using _3TaC8_PlanningPort.Data;
 
@@ -11,9 +12,11 @@ using _3TaC8_PlanningPort.Data;
 namespace _3TaC8_PlanningPort.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260409024131_Exchange for Table")]
+    partial class ExchangeforTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -74,38 +77,6 @@ namespace _3TaC8_PlanningPort.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Watchlists");
-                });
-
-            modelBuilder.Entity("_3TaC8_PlanningPort.Entities.CashWallet", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Balance")
-                        .HasColumnType("decimal(18, 4)");
-
-                    b.Property<DateTime>("LastUpdated")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("TotalDeposited")
-                        .HasColumnType("decimal(18, 4)");
-
-                    b.Property<decimal>("TotalRealizedProfit")
-                        .HasColumnType("decimal(18, 4)");
-
-                    b.Property<decimal>("TotalWithdrawn")
-                        .HasColumnType("decimal(18, 4)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId")
-                        .IsUnique();
-
-                    b.ToTable("CashWallets");
                 });
 
             modelBuilder.Entity("_3TaC8_PlanningPort.Entities.Transaction", b =>
@@ -213,17 +184,6 @@ namespace _3TaC8_PlanningPort.Migrations
                 });
 
             modelBuilder.Entity("Watchlist", b =>
-                {
-                    b.HasOne("_3TaC8_PlanningPort.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("_3TaC8_PlanningPort.Entities.CashWallet", b =>
                 {
                     b.HasOne("_3TaC8_PlanningPort.Entities.User", "User")
                         .WithMany()

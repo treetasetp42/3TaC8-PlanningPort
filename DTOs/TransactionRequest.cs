@@ -1,4 +1,4 @@
-﻿namespace _3TaC8_PlanningPort.DTOs
+namespace _3TaC8_PlanningPort.DTOs
 {
     public class TransactionRequest
     {
@@ -9,6 +9,7 @@
         public string Currency { get; set; } = "USD";
         public string AssetType { get; set; } = "Stock";
         public string? Subtype { get; set; }
+        public string Exchange { get; set; } = "NASDAQ";
         public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
     }
 }
