@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using _3TaC8_PlanningPort.Data;
 
@@ -11,9 +12,11 @@ using _3TaC8_PlanningPort.Data;
 namespace _3TaC8_PlanningPort.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260410024608_UpdateUserAuthSchema")]
+    partial class UpdateUserAuthSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -108,39 +111,6 @@ namespace _3TaC8_PlanningPort.Migrations
                     b.ToTable("CashWallets");
                 });
 
-            modelBuilder.Entity("_3TaC8_PlanningPort.Entities.RefreshToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("Expires")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("Revoked")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Token")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("RefreshTokens");
-                });
-
             modelBuilder.Entity("_3TaC8_PlanningPort.Entities.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -205,20 +175,11 @@ namespace _3TaC8_PlanningPort.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("DeleteRequestedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("DisplayName")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("PasswordResetToken")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PasswordResetTokenExpiry")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("RemotePassword")
                         .HasColumnType("nvarchar(max)");
@@ -227,10 +188,6 @@ namespace _3TaC8_PlanningPort.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -297,7 +254,7 @@ namespace _3TaC8_PlanningPort.Migrations
                     b.HasIndex("ProviderName", "ProviderKey")
                         .IsUnique();
 
-                    b.ToTable("UserOAuths");
+                    b.ToTable("UserOAuth");
                 });
 
             modelBuilder.Entity("Watchlist", b =>
@@ -315,17 +272,6 @@ namespace _3TaC8_PlanningPort.Migrations
                 {
                     b.HasOne("_3TaC8_PlanningPort.Entities.User", "User")
                         .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("_3TaC8_PlanningPort.Entities.RefreshToken", b =>
-                {
-                    b.HasOne("_3TaC8_PlanningPort.Entities.User", "User")
-                        .WithMany("RefreshTokens")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -358,8 +304,6 @@ namespace _3TaC8_PlanningPort.Migrations
             modelBuilder.Entity("_3TaC8_PlanningPort.Entities.User", b =>
                 {
                     b.Navigation("OAuthProviders");
-
-                    b.Navigation("RefreshTokens");
                 });
 #pragma warning restore 612, 618
         }

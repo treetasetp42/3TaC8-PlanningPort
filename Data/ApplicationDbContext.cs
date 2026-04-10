@@ -10,6 +10,8 @@ namespace _3TaC8_PlanningPort.Data
         }
 
         public DbSet<User> Users { get; set; }
+        public DbSet<UserOAuth> UserOAuths { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Watchlist> Watchlists { get; set; }
         public DbSet<StockCache> StockCaches { get; set; }
@@ -31,7 +33,36 @@ namespace _3TaC8_PlanningPort.Data
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.RemoteUser).IsRequired().HasMaxLength(255);
                 entity.HasIndex(e => e.RemoteUser).IsUnique(); 
+                entity.HasIndex(e => e.Email).IsUnique();
             });
+
+            modelBuilder.Entity<UserOAuth>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.ProviderName).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.ProviderKey).IsRequired().HasMaxLength(255);
+                
+                // Composite unique index to prevent duplicate provider links for the same provider
+                entity.HasIndex(e => new { e.ProviderName, e.ProviderKey }).IsUnique();
+
+                entity.HasOne(d => d.User)
+                      .WithMany(p => p.OAuthProviders)
+                      .HasForeignKey(d => d.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Token).IsRequired().HasMaxLength(255);
+                entity.HasIndex(e => e.Token).IsUnique(); 
+
+                entity.HasOne(d => d.User)
+                      .WithMany(p => p.RefreshTokens)
+                      .HasForeignKey(d => d.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
             modelBuilder.Entity<Transaction>(entity =>
             {
                 entity.HasKey(e => e.Id);

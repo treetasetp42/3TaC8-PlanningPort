@@ -1,5 +1,6 @@
 using _3TaC8_PlanningPort.Data;
 using _3TaC8_PlanningPort.Services;
+using _3TaC8_PlanningPort.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -11,6 +12,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Add services to the container.
+builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options => {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -80,6 +84,7 @@ app.UseCors("OpenCors");
 app.UseAuthentication();  
 app.UseAuthorization();
 
+app.UseStaticFiles();
 app.UseHttpsRedirection(); 
 
 app.MapControllers();
