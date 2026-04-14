@@ -338,11 +338,38 @@ namespace _3TaC8_PlanningPort.Controllers
 
             if (!string.IsNullOrEmpty(request.RemoteUser) && request.RemoteUser != user.RemoteUser)
             {
+                // Only allow username change if it's currently set as the email [cite: 2026-04-11]
+                if (user.RemoteUser != user.Email)
+                {
+                    return BadRequest("Username cannot be changed once set.");
+                }
+
                 if (await _context.Users.AnyAsync(u => u.RemoteUser == request.RemoteUser))
                 {
                     return BadRequest("Username already exists.");
                 }
                 user.RemoteUser = request.RemoteUser;
+            }
+            
+            // Handle Email Update [cite: 2026-04-11]
+            if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
+            {
+                // Check if user is linked to Google OAuth
+                bool isGoogleLinked = await _context.UserOAuths.AnyAsync(uo => uo.UserId == user.Id && uo.ProviderName == "Google");
+                if (isGoogleLinked)
+                {
+                    // Prevent email change for OAuth users
+                    // return BadRequest("Email cannot be changed while linked to Google OAuth.");
+                }
+                else
+                {
+                    // Check if the new email already exists in the system
+                    if (await _context.Users.AnyAsync(u => u.Email == request.Email))
+                    {
+                        return BadRequest("Email already exists.");
+                    }
+                    user.Email = request.Email;
+                }
             }
 
             // Handle Image Upload or Deletion
