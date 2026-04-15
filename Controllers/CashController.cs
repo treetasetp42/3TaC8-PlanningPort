@@ -16,40 +16,39 @@ namespace _3TaC8_PlanningPort.Controllers
             _context = context;
         }
 
-        private async Task<CashWallet> GetOrCreateWallet(Guid userId)
+        private async Task<CashWallet> GetOrCreateWallet(Guid portfolioId)
         {
-            var wallet = await _context.CashWallets.FirstOrDefaultAsync(w => w.UserId == userId);
+            var wallet = await _context.CashWallets.FirstOrDefaultAsync(w => w.PortfolioId == portfolioId);
             if (wallet == null)
             {
-                wallet = new CashWallet { UserId = userId, Balance = 0 };
+                wallet = new CashWallet { PortfolioId = portfolioId, Balance = 0 };
                 _context.CashWallets.Add(wallet);
                 await _context.SaveChangesAsync();
             }
             return wallet;
         }
 
-        [HttpGet("{userId}")]
-        public async Task<ActionResult> GetBalance(Guid userId)
+        [HttpGet("{portfolioId}")]
+        public async Task<ActionResult> GetBalance(Guid portfolioId)
         {
-            var wallet = await GetOrCreateWallet(userId);
+            var wallet = await GetOrCreateWallet(portfolioId);
             return Ok(wallet);
         }
 
         [HttpPost("deposit")]
-        public async Task<ActionResult> Deposit(Guid userId, decimal amount)
+        public async Task<ActionResult> Deposit([FromQuery] Guid portfolioId, [FromQuery] decimal amount)
         {
             if (amount <= 0) return BadRequest("Amount must be positive");
             
-            var wallet = await GetOrCreateWallet(userId);
+            var wallet = await GetOrCreateWallet(portfolioId);
             wallet.Balance += amount;
             wallet.TotalDeposited += amount;
             wallet.LastUpdated = DateTime.UtcNow;
 
-            // Log as transaction for history
             var tx = new Transaction
             {
                 Id = Guid.NewGuid(),
-                UserId = userId,
+                PortfolioId = portfolioId,
                 Symbol = "CASH",
                 Type = "Deposit",
                 Quantity = amount,
@@ -68,22 +67,21 @@ namespace _3TaC8_PlanningPort.Controllers
         }
 
         [HttpPost("withdraw")]
-        public async Task<ActionResult> Withdraw(Guid userId, decimal amount)
+        public async Task<ActionResult> Withdraw([FromQuery] Guid portfolioId, [FromQuery] decimal amount)
         {
             if (amount <= 0) return BadRequest("Amount must be positive");
             
-            var wallet = await GetOrCreateWallet(userId);
+            var wallet = await GetOrCreateWallet(portfolioId);
             if (wallet.Balance < amount) return BadRequest("Insufficient balance");
 
             wallet.Balance -= amount;
             wallet.TotalWithdrawn += amount;
             wallet.LastUpdated = DateTime.UtcNow;
 
-            // Log as transaction for history
             var tx = new Transaction
             {
                 Id = Guid.NewGuid(),
-                UserId = userId,
+                PortfolioId = portfolioId,
                 Symbol = "CASH",
                 Type = "Withdraw",
                 Quantity = amount,

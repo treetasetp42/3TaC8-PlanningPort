@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using _3TaC8_PlanningPort.Data;
 
@@ -11,9 +12,11 @@ using _3TaC8_PlanningPort.Data;
 namespace _3TaC8_PlanningPort.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260414100022_AddRbacSystem")]
+    partial class AddRbacSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -33,13 +36,13 @@ namespace _3TaC8_PlanningPort.Migrations
                         .HasColumnOrder(1);
 
                     b.Property<decimal>("DailyChange")
-                        .HasColumnType("decimal(18,4)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("DailyPercentChange")
-                        .HasColumnType("decimal(18,4)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("LastPrice")
-                        .HasColumnType("decimal(18,4)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -297,9 +300,6 @@ namespace _3TaC8_PlanningPort.Migrations
                     b.Property<string>("AvatarUrl")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("BanReason")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime?>("BannedUntil")
                         .HasColumnType("datetime2");
 
@@ -314,9 +314,6 @@ namespace _3TaC8_PlanningPort.Migrations
 
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(450)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
 
                     b.Property<string>("PasswordResetToken")
                         .HasColumnType("nvarchar(max)");
@@ -403,43 +400,6 @@ namespace _3TaC8_PlanningPort.Migrations
                         .IsUnique();
 
                     b.ToTable("UserOAuths");
-                });
-
-            modelBuilder.Entity("_3TaC8_PlanningPort.Entities.UserPenalty", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<Guid?>("AdminId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Details")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Reason")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("Timestamp")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AdminId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("UserPenalties");
                 });
 
             modelBuilder.Entity("Watchlist", b =>
@@ -538,24 +498,6 @@ namespace _3TaC8_PlanningPort.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("_3TaC8_PlanningPort.Entities.UserPenalty", b =>
-                {
-                    b.HasOne("_3TaC8_PlanningPort.Entities.User", "Admin")
-                        .WithMany()
-                        .HasForeignKey("AdminId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("_3TaC8_PlanningPort.Entities.User", "User")
-                        .WithMany("Penalties")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Admin");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("_3TaC8_PlanningPort.Entities.Permission", b =>
                 {
                     b.Navigation("RolePermissions");
@@ -576,8 +518,6 @@ namespace _3TaC8_PlanningPort.Migrations
             modelBuilder.Entity("_3TaC8_PlanningPort.Entities.User", b =>
                 {
                     b.Navigation("OAuthProviders");
-
-                    b.Navigation("Penalties");
 
                     b.Navigation("Portfolios");
 

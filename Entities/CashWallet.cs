@@ -9,8 +9,8 @@ namespace _3TaC8_PlanningPort.Entities
         public Guid Id { get; set; } = Guid.NewGuid();
 
         [Required]
-        public Guid UserId { get; set; }
-        public User? User { get; set; }
+        public Guid PortfolioId { get; set; }
+        public Portfolio? Portfolio { get; set; }
 
         [Column(TypeName = "decimal(18, 4)")]
         public decimal Balance { get; set; } = 0;

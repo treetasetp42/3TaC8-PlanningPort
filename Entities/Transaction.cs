@@ -8,10 +8,10 @@ namespace _3TaC8_PlanningPort.Entities
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        // เชื่อมกับ User (Foreign Key)
+        // เชื่อมกับ Portfolio (Foreign Key)
         [Required]
-        public Guid UserId { get; set; }
-        public User? User { get; set; }
+        public Guid PortfolioId { get; set; }
+        public Portfolio? Portfolio { get; set; }
 
         [Required]
         [MaxLength(20)]

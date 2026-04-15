@@ -1,6 +1,6 @@
 @_3TaC8_PlanningPort_HostAddress = http://localhost:5139
 
-GET {{_3TaC8_PlanningPort_HostAddress}}/weatherforecast/
+# GET {{_3TaC8_PlanningPort_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###

@@ -69,12 +69,15 @@ namespace _3TaC8_PlanningPort.Controllers
                     return BadRequest("Email already exists.");
                 }
 
+                var memberRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Member");
+
                 var newUser = new User
                 {
                     RemoteUser = request.RemoteUser,
                     RemotePassword = BCrypt.Net.BCrypt.HashPassword(request.RemotePassword),
                     Email = request.Email,
-                    DisplayName = request.RemoteUser
+                    DisplayName = request.RemoteUser,
+                    RoleId = memberRole?.Id ?? 1
                 };
                 _context.Users.Add(newUser);
 
@@ -83,15 +86,29 @@ namespace _3TaC8_PlanningPort.Controllers
                 _context.UserLogs.Add(new UserLog { UserId = newUser.Id, Action = "User Registered", IPAddress = ip });
 
                 await _context.SaveChangesAsync();
+
+                // Create default "Main Portfolio" to ensure new users have a workspace
+                var defaultPortfolio = new Portfolio
+                {
+                    UserId = newUser.Id,
+                    Name = "Main Portfolio",
+                    Description = "Your initial portfolio profile",
+                    ColorCode = "#6C5DD3"
+                };
+                _context.Portfolios.Add(defaultPortfolio);
+                await _context.SaveChangesAsync();
+
                 return Ok(new { message = "Registered successfully" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, ex.Message);
+                var errorMsg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+                Console.WriteLine($"Register Error: {errorMsg}");
+                return StatusCode(500, errorMsg);
             }
         }
         [AllowAnonymous]
-        [HttpPost("login")]
+        [HttpPost("login")] 
         public async Task<ActionResult> Login(CreateUserRequest request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.RemoteUser == request.RemoteUser);
@@ -111,6 +128,19 @@ namespace _3TaC8_PlanningPort.Controllers
                 }
                 await _context.SaveChangesAsync();
                 return Unauthorized("Invalid username or password");
+            }
+
+            // Check if user is disabled
+            if (!user.IsActive)
+            {
+                return StatusCode(403, "Your account has been disabled by an administrator.");
+            }
+
+            // Check if user is banned
+            if (user.BannedUntil.HasValue && user.BannedUntil.Value > DateTime.UtcNow)
+            {
+                var reasonText = string.IsNullOrWhiteSpace(user.BanReason) ? "No reason specified." : user.BanReason;
+                return StatusCode(403, $"Your account is banned until {user.BannedUntil:yyyy-MM-dd HH:mm} UTC. Reason: {reasonText}");
             }
 
             // Deletion countdown check — lazy evaluation at login only (low-load design for Azure Free Tier)
@@ -133,13 +163,22 @@ namespace _3TaC8_PlanningPort.Controllers
             _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Login Success", IPAddress = ip });
             await _context.SaveChangesAsync();
 
+            // Ban check
+            if (user.BannedUntil.HasValue && user.BannedUntil.Value > DateTime.UtcNow)
+            {
+                return StatusCode(403, new { message = $"Your account is banned until {user.BannedUntil.Value:yyyy-MM-dd HH:mm} UTC." });
+            }
+
+            var permissions = await GetUserPermissions(user.Id);
+
             return Ok(new
             {
                 accessToken = token,
                 refreshToken = refreshToken.Token,
                 userId = user.Id,
-                expiresIn = 60, // นาที [cite: 2026-04-01]
-                deleteRequestedAt = user.DeleteRequestedAt // null if no pending deletion; date if countdown active
+                expiresIn = 60,
+                deleteRequestedAt = user.DeleteRequestedAt,
+                permissions
             });
         }
 
@@ -180,6 +219,8 @@ namespace _3TaC8_PlanningPort.Controllers
                     }
                     else
                     {
+                        var memberRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Member");
+
                         // 4. Create new user if they don't exist at all
                         user = new User
                         {
@@ -187,13 +228,25 @@ namespace _3TaC8_PlanningPort.Controllers
                             Email = payload.Email,
                             DisplayName = payload.Name,
                             AvatarUrl = payload.Picture,
-                            RemotePassword = null // OAuth users have no local password initially
+                            RemotePassword = null, // OAuth users have no local password initially
+                            RoleId = memberRole?.Id ?? 1
                         };
                         _context.Users.Add(user);
                         _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Google User Registered", IPAddress = ip });
                         
                         await _context.SaveChangesAsync(); // Save to generate ID
                         
+                        // Create default "Main Portfolio" for the new OAuth user
+                        var defaultPortfolio = new Portfolio
+                        {
+                            UserId = user.Id,
+                            Name = "Main Portfolio",
+                            Description = "Your initial portfolio profile",
+                            ColorCode = "#6C5DD3"
+                        };
+                        _context.Portfolios.Add(defaultPortfolio);
+                        await _context.SaveChangesAsync();
+
                         // 5. Link Google Account
                         _context.UserOAuths.Add(new UserOAuth
                         {
@@ -210,12 +263,28 @@ namespace _3TaC8_PlanningPort.Controllers
                 _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Google Login Success", IPAddress = ip });
                 await _context.SaveChangesAsync();
 
+                // Check if user is disabled
+                if (!user.IsActive)
+                {
+                    return StatusCode(403, "Your account has been disabled by an administrator.");
+                }
+
+                // Ban check
+                if (user.BannedUntil.HasValue && user.BannedUntil.Value > DateTime.UtcNow)
+                {
+                    var reasonText = string.IsNullOrWhiteSpace(user.BanReason) ? "No reason specified." : user.BanReason;
+                    return StatusCode(403, $"Your account is banned until {user.BannedUntil.Value:yyyy-MM-dd HH:mm} UTC. Reason: {reasonText}");
+                }
+
+                var permissions = await GetUserPermissions(user.Id);
+
                 return Ok(new
                 {
                     accessToken = token,
                     refreshToken = refreshToken.Token,
                     userId = user.Id,
-                    expiresIn = 60
+                    expiresIn = 60,
+                    permissions
                 });
             }
             catch (Exception ex)
@@ -252,7 +321,8 @@ namespace _3TaC8_PlanningPort.Controllers
 
                 var token = GenerateJwtToken(user);
                 var refreshToken = await GenerateAndSaveRefreshToken(user);
-                return Ok(new { accessToken = token, refreshToken = refreshToken.Token, userId = user.Id, expiresIn = 60 });
+                var linkPerms = await GetUserPermissions(user.Id);
+                return Ok(new { accessToken = token, refreshToken = refreshToken.Token, userId = user.Id, expiresIn = 60, permissions = linkPerms });
             }
             catch (Exception ex)
             {
@@ -312,6 +382,9 @@ namespace _3TaC8_PlanningPort.Controllers
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound();
 
+            await _context.Entry(user).Reference(u => u.Role).LoadAsync();
+            var permissions = await GetUserPermissions(user.Id);
+
             return Ok(new
             {
                 userId = user.Id,
@@ -319,9 +392,11 @@ namespace _3TaC8_PlanningPort.Controllers
                 email = user.Email,
                 displayName = user.DisplayName,
                 avatarUrl = user.AvatarUrl,
-                role = user.Role,
+                roleId = user.RoleId,
+                roleName = user.Role?.Name ?? "Member",
                 hasPassword = !string.IsNullOrEmpty(user.RemotePassword),
-                isGoogleLinked = await _context.UserOAuths.AnyAsync(uo => uo.UserId == user.Id && uo.ProviderName == "Google")
+                isGoogleLinked = await _context.UserOAuths.AnyAsync(uo => uo.UserId == user.Id && uo.ProviderName == "Google"),
+                permissions
             });
         }
 
@@ -535,25 +610,22 @@ namespace _3TaC8_PlanningPort.Controllers
             DeleteLocalAvatarFile(user.AvatarUrl);
 
             // Anonymize all personally identifiable information
+            var memberRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Member");
             user.RemoteUser = $"[deleted_{user.Id.ToString()[..8]}]";
             user.Email = null;
             user.DisplayName = "[deleted]";
             user.AvatarUrl = null;
             user.RemotePassword = null;
-            user.Role = "Deleted";
+            user.RoleId = memberRole?.Id ?? 1;
             user.DeleteRequestedAt = null;
 
             // Remove all OAuth links for this user (Quota cleanup)
             var oauthLinks = _context.UserOAuths.Where(uo => uo.UserId == user.Id);
             _context.UserOAuths.RemoveRange(oauthLinks);
 
-            // Remove all portfolio data
-            var transactions = _context.Transactions.Where(t => t.UserId == user.Id);
-            _context.Transactions.RemoveRange(transactions);
-
-            // Remove CashWallet entries if they exist
-            var wallets = _context.CashWallets.Where(w => w.UserId == user.Id);
-            _context.CashWallets.RemoveRange(wallets);
+            // Remove all portfolios (this will cascade delete Transactions and CashWallets)
+            var portfolios = _context.Portfolios.Where(p => p.UserId == user.Id);
+            _context.Portfolios.RemoveRange(portfolios);
 
             // Remove Watchlist entries if they exist
             var watchlists = _context.Watchlists.Where(w => w.UserId == user.Id);
@@ -561,6 +633,21 @@ namespace _3TaC8_PlanningPort.Controllers
 
             _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Account Permanently Destroyed", IPAddress = "system" });
             await _context.SaveChangesAsync();
+        }
+
+        // ── Helper: load permissions for a user based on their role ────────────
+        private async Task<List<string>> GetUserPermissions(Guid userId)
+        {
+            var user = await _context.Users
+                .Include(u => u.Role)
+                    .ThenInclude(r => r!.RolePermissions)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user?.Role?.RolePermissions == null) return new List<string>();
+
+            return user.Role.RolePermissions
+                .Select(rp => rp.PermissionKey)
+                .ToList();
         }
  
         private string GenerateJwtToken(User user)
@@ -625,13 +712,15 @@ namespace _3TaC8_PlanningPort.Controllers
             // Generate new pair
             var newAccessToken = GenerateJwtToken(refreshToken.User);
             var newRefreshToken = await GenerateAndSaveRefreshToken(refreshToken.User);
+            var refreshPerms = await GetUserPermissions(refreshToken.User.Id);
 
             return Ok(new
             {
                 accessToken = newAccessToken,
                 refreshToken = newRefreshToken.Token,
                 userId = refreshToken.User.Id,
-                expiresIn = 60
+                expiresIn = 60,
+                permissions = refreshPerms
             });
         }
 
