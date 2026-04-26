@@ -8,8 +8,14 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+//builder.Services.AddDbContext<ApplicationDbContext>(options =>
+//    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlOptions => sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,  
+            maxRetryDelay: TimeSpan.FromSeconds(30), 
+            errorNumbersToAdd: null)));
 
 // Add services to the container.
 builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
@@ -61,25 +67,53 @@ builder.Services.AddSwaggerGen(opt =>
 builder.Services.AddHttpClient<StockService>();
 
 
+//builder.Services.AddCors(options =>
+//{
+//    options.AddPolicy("OpenCors", policy =>
+//    {
+//        policy.AllowAnyOrigin()  
+//              .AllowAnyHeader()
+//              .AllowAnyMethod();
+//    });
+//});
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("OpenCors", policy =>
     {
-        policy.AllowAnyOrigin()  
+        policy.WithOrigins(
+                "http://localhost:5173",  
+                "https://investplanner.vercel.app"  
+              )
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
 });
-
 var app = builder.Build();
 
-// Run migrations and seed data on startup
+// Run migrations and seed data on startup 
+Console.WriteLine(">>> 1. App Built! Starting Database Migration...");
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    Console.WriteLine(">>> 2. Applying Migrations...");
     db.Database.Migrate();
+
+    Console.WriteLine(">>> 3. Migrations Done! Seeding Permissions...");
     await PermissionSeeder.SeedAsync(db);
+
+    Console.WriteLine(">>> 4. Seeding Done!");
 }
+
+Console.WriteLine(">>> 5. Starting Web Server...");
+
+//using (var scope = app.Services.CreateScope())
+//{
+//    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+//    db.Database.Migrate();
+//    await PermissionSeeder.SeedAsync(db);
+//}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

@@ -1,74 +1,88 @@
-**﻿📈 3TaC8-PlanningPort Backend Setup Guide**
+# InvestPlanner API - Backend
 
-คู่มือสำหรับการ Setup ระบบ Backend (ASP.NET Core Web API) และ Database (SQL Server) เมื่อมีการ Pull Code ไปรันที่เครื่องใหม่
+[English](#english) | [ภาษาไทย](#ภาษาไทย)
 
-🛠 Prerequisites (สิ่งที่ต้องติดตั้งในเครื่อง)
-.NET 8.0 SDK หรือเวอร์ชันล่าสุด
+---
 
-Visual Studio 2022 (พร้อม Workload: ASP.NET and web development)
+## English
 
-SQL Server Express หรือ Developer Edition
+InvestPlanner API is the backend service for the InvestPlanner system. It handles core logic, user management, and integration with external financial APIs. This project serves as a practice for building secure and scalable RESTful APIs using .NET 8.
 
-SQL Server Management Studio (SSMS)
+🔗 **Frontend Repository:** [https://github.com/treetasetp42/PlanningPort-FrontEnd](https://github.com/treetasetp42/PlanningPort-FrontEnd)
 
-🚀 Step-by-Step Setup
-1. Restore Packages
-หลังจาก Pull Code มาแล้ว ให้เปิด Solution (.sln) ใน Visual Studio จากนั้น:
+### Tech Stack
+- **Framework:** .NET 8 (ASP.NET Core Web API)
+- **ORM:** Entity Framework Core 8
+- **Database:** Microsoft SQL Server
+- **Authentication:** JWT (JSON Web Tokens) & Google OAuth validation
+- **External APIs:** Finnhub (Stock price data)
+- **Documentation:** Swagger / OpenAPI
 
-คลิกขวาที่ Solution -> Restore NuGet Packages
+### Key Features
+- **Auth & Roles:** Secure login with JWT and role-based access (Admin/User).
+- **Google OAuth:** Validates external Google access tokens.
+- **Security:** Password hashing via BCrypt and email-based password reset.
+- **Data Seeding:** Automatic admin account and permission setup on database update.
+- **Cloud Ready:** Optimized for Azure App Service deployment.
 
-Package หลักที่ใช้: Microsoft.EntityFrameworkCore.SqlServer, BCrypt.Net-Next, Newtonsoft.Json
+### Local Setup
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/treetasetp42/3TaC8-PlanningPort.git
+   cd 3TaC8-PlanningPort
+   ```
+2. **Environment Variables**
+   Set these in `appsettings.Development.json` or .NET User Secrets:
+   ```json
+   {
+     "ConnectionStrings": {
+       "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=InvestPlannerDb;Trusted_Connection=True;"
+     },
+     "Jwt": { "Key": "your_32_char_secret_key" },
+     "Finnhub": { "ApiKey": "your_key" },
+     "SmtpSettings": { "Password": "app_password" }
+   }
+   ```
+3. **Database Migration**
+   ```bash
+   dotnet ef database update
+   ```
+4. **Run**
+   ```bash
+   dotnet run
+   ```
 
-2. Setup Database (2 วิธี)
-วิธี A: สร้างใหม่จาก Code (แนะนำสำหรับเครื่องใหม่)
-เปิด Package Manager Console ใน Visual Studio
+---
 
-รันคำสั่งเพื่อให้ EF Core สร้าง Database และ Table ตาม Migration ล่าสุด:
+## ภาษาไทย
 
-PowerShell
-Update-Database
-วิธี B: ใช้การ Restore (ถ้าต้องการข้อมูลเดิม)
-นำไฟล์ .bak จากเครื่องเดิมมาที่เครื่องใหม่
+โปรเจกต์นี้เป็นส่วน Backend สำหรับระบบ InvestPlanner สร้างขึ้นมาเพื่อเป็นโปรเจกต์ฝึกหัดการทำ RESTful API แนวคิดคือทำระบบหลังบ้านเพื่อจัดการลอจิกต่างๆ เช่น ข้อมูลผู้ใช้, พอร์ตลงทุน และการเชื่อมต่อกับ API ภายนอก
 
-ใน SSMS: คลิกขวาที่ Databases -> Restore Database...
+### เครื่องมือที่ใช้
+- **Framework:** .NET 8 (ASP.NET Core Web API)
+- **ORM:** Entity Framework Core 8
+- **Database:** Microsoft SQL Server
+- **Authentication:** ระบบล็อกอินด้วย JWT และตรวจเช็ก Google OAuth
+- **External APIs:** Finnhub (ดึงราคาหุ้น)
+- **Documentation:** Swagger สำหรับเทสต์ API
 
-ตรวจสอบว่า SQL Login (เช่น devpp) มีสิทธิ์เข้าถึง DB ที่ Restore มาแล้ว
+### ฟีเจอร์หลัก
+- **Auth & Roles:** ล็อกอินและออก Token (JWT) แบ่งสิทธิ์ผู้ใช้และแอดมิน
+- **Google OAuth:** เชื่อมต่อและตรวจสอบสิทธิ์ผ่าน Google
+- **Security:** เข้ารหัสผ่านด้วย BCrypt และระบบรีเซ็ตรหัสผ่านทางอีเมล
+- **Data Seeding:** สร้างบัญชีแอดมินและข้อมูลเริ่มต้นให้อัตโนมัติ
 
-3. Setup User Secrets (สำคัญมาก ⚠️)
-เนื่องจากไฟล์ความลับไม่ได้ถูกเก็บไว้ใน Git คุณต้องสร้างใหม่ที่เครื่องใหม่เสมอ:
+### วิธีรันโปรเจกต์
+1. **โหลดโปรเจกต์:** `git clone https://github.com/treetasetp42/3TaC8-PlanningPort.git`
+2. **ตั้งค่า Secrets:** ตั้งค่า Connection String, JWT Key และ API Key ใน User Secrets
+3. **ฐานข้อมูล:** รัน `dotnet ef database update`
+4. **รัน:** `dotnet run`
 
-คลิกขวาที่โปรเจกต์ 3TaC8_PlanningPort -> เลือก Manage User Secrets
+---
 
-วางโครงสร้าง JSON นี้ลงไป (เปลี่ยน Connection String ตามชื่อเครื่องใหม่):
+## 📜 Changelog
+Detailed history of changes can be found in [CHANGELOG.md](./CHANGELOG.md).
 
-JSON
->{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=ชื่อเครื่องใหม่;Database=3TaC8-DATABASE;User Id=devpp;Password=รหัสผ่าน;TrustServerCertificate=True;"
-  },
-  "Finnhub": {
-    "ApiKey": "รหัส_API_KEY_จาก_FINNHUB"
-  }
-}
-🏗 Project Architecture & Logic
-Authentication (User System)
+---
 
-Registration: ใช้ BCrypt ในการ Hash รหัสผ่านก่อนลง Database $2a$11$... เพื่อความปลอดภัยสูงสุด 
-
-
-Login: ตรวจสอบรหัสผ่านผ่านฟังก์ชัน BCrypt.Verify 
-
-Transactions & Portfolio (Investment)
-
-Asset Support: รองรับหุ้น US (S&P500, Nasdaq) และสินทรัพย์อื่นๆ 
-
-
-Average Cost: ระบบคำนวณต้นทุนเฉลี่ยจากรายการ 'Buy' ทั้งหมดใน Database 
-
-
-Real-time Price: ดึงราคาปัจจุบันผ่าน StockService ที่เชื่อมต่อกับ Finnhub API 
-
-📝 Developer Notes
-Git Policy: ห้ามใส่ API Key หรือรหัสผ่านลงใน appsettings.json โดยเด็ดขาด ให้ใช้ User Secrets เท่านั้น
-
-Adding Features: หากมีการเพิ่ม Column ใน Entity (Model) ต้องรัน Add-Migration <Name> และ Update-Database ทุกครั้ง
+**Note:** This project was developed using AI-assisted tools to accelerate coding and boilerplate generation. The core architecture, system logic, database design, and cloud deployment were manually structured and managed.

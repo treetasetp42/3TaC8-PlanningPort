@@ -743,7 +743,8 @@ namespace _3TaC8_PlanningPort.Controllers
             await _context.SaveChangesAsync();
 
             // Send Email
-            var resetLink = $"http://localhost:5173/reset-password?token={token}&email={user.Email}";
+            var frontendUrl = _config["FrontendUrl"] ?? "http://localhost:5173";
+            var resetLink = $"{frontendUrl}/reset-password?token={token}&email={user.Email}";
             await _emailService.SendPasswordResetEmailAsync(user.Email!, resetLink);
 
             return Ok(new { message = "If the email is registered, a reset link has been sent." });
