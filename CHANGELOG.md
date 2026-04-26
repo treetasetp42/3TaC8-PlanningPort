@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.5.0] - 2026-04-26
+## [1.0.0] - 2026-04-26
 ### Added
 - Startup logging/checkpoints to troubleshoot server initialization.
 - Detailed professional README.md with bilingual support.
