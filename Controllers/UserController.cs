@@ -657,14 +657,14 @@ namespace _3TaC8_PlanningPort.Controllers
         new Claim(ClaimTypes.Name, user.RemoteUser)
     };
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? "default_jwt_secret_key_change_this_in_production"));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.Now.AddMinutes(double.Parse(_config["Jwt:DurationInMinutes"])),
+                expires: DateTime.Now.AddMinutes(double.Parse(_config["Jwt:DurationInMinutes"] ?? "60")),
                 signingCredentials: creds
             );
 

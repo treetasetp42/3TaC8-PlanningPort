@@ -6,13 +6,13 @@
 
 ## English
 
-InvestPlanner API is the backend service for the InvestPlanner system. It handles core logic, user management, and integration with external financial APIs. This project serves as a practice for building secure and scalable RESTful APIs using .NET 8.
+InvestPlanner API is the backend service for the InvestPlanner system. It handles core logic, user management, and integration with external financial APIs. This project serves as a practice for building secure and scalable RESTful APIs using .NET 10.
 
 🔗 **Frontend Repository:** [https://github.com/treetasetp42/PlanningPort-FrontEnd](https://github.com/treetasetp42/PlanningPort-FrontEnd)
 
 ### Tech Stack
-- **Framework:** .NET 8 (ASP.NET Core Web API)
-- **ORM:** Entity Framework Core 8
+- **Framework:** .NET 10 (ASP.NET Core Web API) [LTS]
+- **ORM:** Entity Framework Core 10
 - **Database:** Microsoft SQL Server
 - **Authentication:** JWT (JSON Web Tokens) & Google OAuth validation
 - **External APIs:** Finnhub (Stock price data)
@@ -56,11 +56,11 @@ InvestPlanner API is the backend service for the InvestPlanner system. It handle
 
 ## ภาษาไทย
 
-โปรเจกต์นี้เป็นส่วน Backend สำหรับระบบ InvestPlanner สร้างขึ้นมาเพื่อเป็นโปรเจกต์ฝึกหัดการทำ RESTful API แนวคิดคือทำระบบหลังบ้านเพื่อจัดการลอจิกต่างๆ เช่น ข้อมูลผู้ใช้, พอร์ตลงทุน และการเชื่อมต่อกับ API ภายนอก
+โปรเจกต์นี้เป็นส่วน Backend สำหรับระบบ InvestPlanner สร้างขึ้นมาเพื่อเป็นโปรเจกต์ฝึกหัดการทำ RESTful API แนวคิดคือทำระบบหลังบ้านเพื่อจัดการลอจิกต่างๆ เช่น ข้อมูลผู้ใช้, พอร์ตลงทุน และการเชื่อมต่อกับ API ภายนอก โดยใช้ .NET 10
 
 ### เครื่องมือที่ใช้
-- **Framework:** .NET 8 (ASP.NET Core Web API)
-- **ORM:** Entity Framework Core 8
+- **Framework:** .NET 10 (ASP.NET Core Web API) [LTS]
+- **ORM:** Entity Framework Core 10
 - **Database:** Microsoft SQL Server
 - **Authentication:** ระบบล็อกอินด้วย JWT และตรวจเช็ก Google OAuth
 - **External APIs:** Finnhub (ดึงราคาหุ้น)
