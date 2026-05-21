@@ -63,7 +63,7 @@ builder.Services.AddSwaggerGen(opt =>
             new string[]{}
         }
     });
-});
+}); 
 builder.Services.AddHttpClient<StockService>();
 
 
