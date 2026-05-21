@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>_3TaC8_PlanningPort</RootNamespace>
     <UserSecretsId>ab0db017-dfa9-4b98-b96d-598f74f62b2a</UserSecretsId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-05-21
+### Added
+- **Gemini 2.5 Flash Controller**: Added new `ChatController` to serve as the unified AI conversational gateway.
+- **Strict Polite Tone Directives**: Programmed the controller to structure `systemInstruction` parameters forcing a strict polite female Thai persona (actively forbidding generic/mixed or male hara-style responses).
+- **Page Context Adaptation**: Modified request bindings to accept a `CurrentPath` DTO parameter. If provided, it appends active routing metadata directly to the prompt instruction, yielding hyper-focused contextual assistance (e.g. watchlist guidelines, cash deposit advice).
+- **Environment Key Fallback**: Programmed the controller to search for `GEMINI_API_KEY` environment variables as fallback, to prevent missing secret configurations on raw hosting containers.
+
 ## [1.0.0] - 2026-04-26
 ### Added
 - Startup logging/checkpoints to troubleshoot server initialization.
