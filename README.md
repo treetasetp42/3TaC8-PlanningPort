@@ -22,7 +22,7 @@ InvestPlanner API is the backend service for the InvestPlanner system. It handle
 - **AI Chatbot Endpoint:** Direct Google Gemini 2.5 Flash API integration for high-performance natural language generation.
 - **Page-Aware System Instructions:** System prompt automatically consumes frontend routes to contextualize questions according to the active page (e.g. watchlist, portfolio, settings).
 - **Polite Female Tone Guardrail:** System prompt enforces a strict polite female Thai persona (forbids male/mixed suffix styles).
-- **Robust Key fallbacks & Debugging**: Connects API key using standard `Gemini:ApiKey` configurations or `GEMINI_API_KEY` environment variables, and appends a masked version of the loaded key on error status payloads for seamless cloud environment troubleshooting.
+- **Safe external-service errors:** Connects through secure configuration and returns generic upstream-service failures without exposing key fragments or provider internals.
 - **Auth & Roles:** Secure login with JWT and role-based access (Admin/User).
 - **Google OAuth:** Validates external Google access tokens.
 - **Security:** Password hashing via BCrypt and email-based password reset.
@@ -42,9 +42,11 @@ InvestPlanner API is the backend service for the InvestPlanner system. It handle
      "ConnectionStrings": {
        "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=InvestPlannerDb;Trusted_Connection=True;"
      },
-     "Jwt": { "Key": "your_32_char_secret_key" },
+     "Jwt": { "Key": "replace_with_a_random_secret_of_at_least_32_characters" },
+     "Gemini": { "ApiKey": "your_key" },
      "Finnhub": { "ApiKey": "your_key" },
-     "SmtpSettings": { "Password": "app_password" }
+     "SmtpSettings": { "Password": "app_password" },
+     "FrontendUrl": "http://localhost:5173"
    }
    ```
 3. **Database Migration**
@@ -55,6 +57,14 @@ InvestPlanner API is the backend service for the InvestPlanner system. It handle
    ```bash
    dotnet run
    ```
+
+### Production security requirements
+
+- Supply secrets through environment variables or a secret manager, never committed JSON. ASP.NET Core environment names use double underscores, for example `Jwt__Key`, `ConnectionStrings__DefaultConnection`, `Gemini__ApiKey`, `Finnhub__ApiKey`, `SmtpSettings__Password`, and `FrontendUrl`.
+- The application refuses to start when `Jwt__Key` is missing, weak, or still contains the example fallback text. Use a newly generated random value; do not reuse a value that has appeared in Git history.
+- No account is promoted automatically. After registering the intended owner, assign the `Admin` role out-of-band through a protected database administration session.
+- Application rate limits are intentionally conservative and stored in memory. Keep an additional Nginx/Cloudflare request limit and provider-side Gemini/Finnhub quota for protection across restarts or multiple containers.
+- Existing refresh tokens created before this security update are invalid because tokens are now stored as hashes in the database.
 
 ---
 
@@ -74,7 +84,7 @@ InvestPlanner API is the backend service for the InvestPlanner system. It handle
 - **ระบบวิเคราะห์คำถาม AI (Chatbot Endpoint):** เชื่อมต่อบริการของ Google Gemini 2.5 Flash ตอบโต้ผู้ใช้ได้อย่างรวดเร็วและแม่นยำกว่ารุ่น Lite
 - **ระบบแนะนำตามบริบทหน้าเว็บ (Page Path Context):** ประมวลผลจากหน้าที่ผู้ใช้อยู่ ณ ปัจจุบัน (เช่น หน้าเทรด หรือพอร์ตการลงทุน) เพื่ออธิบายฟังก์ชัน ปุ่ม และเมนูในหน้านั้นได้อย่างสมบูรณ์แบบ
 - **ระบบควบคุมน้ำเสียงภาษาไทย (Polite Female Persona):** ตีกรอบคำสั่ง System Instructions บังคับให้น้ำเสียงของบอทเป็นผู้หญิงที่สุภาพและลงท้ายด้วยคำว่า **"ค่ะ"** และ **"นะคะ"** เสมอ (ห้ามมีคำหางเสียงผู้ชายหรือหางเสียงที่สับสนปะปน)
-- **ความยืดหยุ่นในการดีบั๊ก & ตั้งค่าคลาวด์:** รองรับ Config ทั้ง `Gemini:ApiKey` หรือ Environment Variable `GEMINI_API_KEY` พร้อมแนบ Masked Key ใน Payload เมื่อเกิด Error เพื่อให้แอดมินตรวจสอบการตั้งค่าบน Azure ได้อย่างง่ายดาย
+- **การจัดการข้อผิดพลาดอย่างปลอดภัย:** รองรับ Config ทั้ง `Gemini:ApiKey` หรือ Environment Variable `GEMINI_API_KEY` และไม่ส่งรายละเอียดภายในหรือส่วนหนึ่งของ API key กลับไปยังผู้ใช้
 - **Auth & Roles:** ล็อกอินและออก Token (JWT) แบ่งสิทธิ์ผู้ใช้และแอดมิน
 - **Google OAuth:** เชื่อมต่อและตรวจสอบสิทธิ์ผ่าน Google
 - **Security:** เข้ารหัสผ่านด้วย BCrypt และระบบรีเซ็ตรหัสผ่านทางอีเมล

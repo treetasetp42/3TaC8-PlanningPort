@@ -1,12 +1,16 @@
 using _3TaC8_PlanningPort.Data;
 using _3TaC8_PlanningPort.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace _3TaC8_PlanningPort.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class CashController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -14,6 +18,13 @@ namespace _3TaC8_PlanningPort.Controllers
         public CashController(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        private async Task<bool> OwnsPortfolioAsync(Guid portfolioId)
+        {
+            var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return Guid.TryParse(userIdValue, out var userId) &&
+                await _context.Portfolios.AnyAsync(p => p.Id == portfolioId && p.UserId == userId);
         }
 
         private async Task<CashWallet> GetOrCreateWallet(Guid portfolioId)
@@ -31,14 +42,17 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpGet("{portfolioId}")]
         public async Task<ActionResult> GetBalance(Guid portfolioId)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
             var wallet = await GetOrCreateWallet(portfolioId);
             return Ok(wallet);
         }
 
         [HttpPost("deposit")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> Deposit([FromQuery] Guid portfolioId, [FromQuery] decimal amount)
         {
-            if (amount <= 0) return BadRequest("Amount must be positive");
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (amount <= 0 || amount > 1_000_000_000_000m) return BadRequest("Amount is outside the supported range");
             
             var wallet = await GetOrCreateWallet(portfolioId);
             wallet.Balance += amount;
@@ -67,9 +81,11 @@ namespace _3TaC8_PlanningPort.Controllers
         }
 
         [HttpPost("withdraw")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> Withdraw([FromQuery] Guid portfolioId, [FromQuery] decimal amount)
         {
-            if (amount <= 0) return BadRequest("Amount must be positive");
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (amount <= 0 || amount > 1_000_000_000_000m) return BadRequest("Amount is outside the supported range");
             
             var wallet = await GetOrCreateWallet(portfolioId);
             if (wallet.Balance < amount) return BadRequest("Insufficient balance");

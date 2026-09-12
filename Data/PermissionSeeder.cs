@@ -103,27 +103,8 @@ namespace _3TaC8_PlanningPort.Data
             }
             await context.SaveChangesAsync();
 
-            // 3. Migrate existing users: map old string Role → new RoleId
-            //    Only needed once for users created before this migration
-            var memberRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Member");
-            var adminRole  = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
-            var proRole    = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Pro");
-            var modRole    = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Moderator");
-
-            // Users whose RoleId is still the default (1) but haven't been explicitly set
-            // are already fine (Member = Id 1 if seeded in order). No action needed for them.
-
-            // 4. Auto-promote the first registered user to Admin (if they're still Member)
-            var firstUser = await context.Users
-                .OrderBy(u => u.CreatedAt)
-                .FirstOrDefaultAsync();
-
-            if (firstUser != null && adminRole != null && firstUser.RoleId == (memberRole?.Id ?? 1))
-            {
-                firstUser.RoleId = adminRole.Id;
-                await context.SaveChangesAsync();
-                Console.WriteLine($"[Seeder] Promoted first user '{firstUser.RemoteUser}' to Admin.");
-            }
+            // Administrator assignment is intentionally not automatic. Configure the first
+            // administrator out-of-band so a public registration can never claim the role.
         }
     }
 }

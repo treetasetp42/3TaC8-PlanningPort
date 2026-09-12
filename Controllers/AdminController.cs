@@ -3,7 +3,9 @@ using _3TaC8_PlanningPort.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Security.Cryptography;
 
 namespace _3TaC8_PlanningPort.Controllers
 {
@@ -20,7 +22,7 @@ namespace _3TaC8_PlanningPort.Controllers
         }
 
         // ── Guard helper ───────────────────────────────────────────────────────
-        private async Task<bool> IsAdminAsync()
+        private async Task<bool> HasPermissionAsync(string permission)
         {
             var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdStr, out var userId)) return false;
@@ -31,14 +33,17 @@ namespace _3TaC8_PlanningPort.Controllers
                 .FirstOrDefaultAsync(u => u.Id == userId);
 
             return user?.Role?.RolePermissions
-                .Any(rp => rp.PermissionKey == "ADMIN_ACCESS") ?? false;
+                .Any(rp => rp.PermissionKey == permission) ?? false;
         }
 
         // ── GET /api/admin/users ───────────────────────────────────────────────
         [HttpGet("users")]
         public async Task<IActionResult> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_VIEW")) return Forbid();
+
+            page = Math.Max(page, 1);
+            pageSize = Math.Clamp(pageSize, 1, 100);
 
             var query = _context.Users
                 .Include(u => u.Role)
@@ -75,7 +80,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPut("users/{id}/role")]
         public async Task<IActionResult> ChangeUserRole(Guid id, [FromBody] ChangeRoleRequest request)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_EDIT")) return Forbid();
 
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound("User not found.");
@@ -93,7 +98,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPut("users/{id}/ban")]
         public async Task<IActionResult> BanUser(Guid id, [FromBody] BanUserRequest request)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_EDIT")) return Forbid();
 
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound("User not found.");
@@ -121,7 +126,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPut("users/{id}/unban")]
         public async Task<IActionResult> UnbanUser(Guid id)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_EDIT")) return Forbid();
 
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound("User not found.");
@@ -148,7 +153,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPut("users/{id}/status")]
         public async Task<IActionResult> SetUserStatus(Guid id, [FromBody] SetStatusRequest request)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_EDIT")) return Forbid();
 
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound("User not found.");
@@ -174,7 +179,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPut("users/{id}/profile")]
         public async Task<IActionResult> UpdateUserProfile(Guid id, [FromBody] UpdateUserProfileRequest request)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_EDIT")) return Forbid();
 
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound("User not found.");
@@ -191,7 +196,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPost("users/{id}/reset-password")]
         public async Task<IActionResult> AdminResetPassword(Guid id, [FromBody] AdminResetPasswordRequest request)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_USERS_EDIT")) return Forbid();
 
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound("User not found.");
@@ -208,6 +213,11 @@ namespace _3TaC8_PlanningPort.Controllers
             }
 
             user.RemotePassword = BCrypt.Net.BCrypt.HashPassword(passwordToSet);
+
+            var activeRefreshTokens = await _context.RefreshTokens
+                .Where(token => token.UserId == id && token.Revoked == null)
+                .ToListAsync();
+            foreach (var token in activeRefreshTokens) token.Revoked = DateTime.UtcNow;
 
             _context.UserPenalties.Add(new UserPenalty
             {
@@ -228,16 +238,14 @@ namespace _3TaC8_PlanningPort.Controllers
         private string GenerateRandomPassword(int length)
         {
             const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"; // Removed look-alikes like 0, O, I, l
-            var random = new Random();
-            return new string(Enumerable.Repeat(chars, length)
-                .Select(s => s[random.Next(s.Length)]).ToArray());
+            return RandomNumberGenerator.GetString(chars, length);
         }
 
         // ── GET /api/admin/roles ───────────────────────────────────────────────
         [HttpGet("roles")]
         public async Task<IActionResult> GetRoles()
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_ROLES_VIEW")) return Forbid();
 
             var roles = await _context.Roles
                 .Include(r => r.RolePermissions)
@@ -265,7 +273,8 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpPut("roles/{roleId}/permissions")]
         public async Task<IActionResult> UpdateRolePermissions(int roleId, [FromBody] UpdateRolePermissionsRequest request)
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_ROLES_MANAGE")) return Forbid();
+            if (request.PermissionKeys.Count > 100) return BadRequest("Too many permissions supplied.");
 
             var role = await _context.Roles
                 .Include(r => r.RolePermissions)
@@ -277,7 +286,7 @@ namespace _3TaC8_PlanningPort.Controllers
             _context.RolePermissions.RemoveRange(role.RolePermissions);
 
             // Add the new set
-            foreach (var key in request.PermissionKeys)
+            foreach (var key in request.PermissionKeys.Distinct(StringComparer.Ordinal))
             {
                 var permExists = await _context.Permissions.AnyAsync(p => p.Key == key);
                 if (permExists)
@@ -298,7 +307,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpGet("roles/list")]
         public async Task<IActionResult> GetRolesList()
         {
-            if (!await IsAdminAsync()) return Forbid();
+            if (!await HasPermissionAsync("ADMIN_ROLES_VIEW")) return Forbid();
 
             var roles = await _context.Roles
                 .OrderBy(r => r.Id)
@@ -318,24 +327,30 @@ namespace _3TaC8_PlanningPort.Controllers
     public class BanUserRequest
     {
         public DateTime? BanUntil { get; set; } // null = permanent
+        [MaxLength(500)]
         public string? Reason { get; set; }
     }
 
     public class SetStatusRequest
     {
         public bool IsActive { get; set; }
+        [MaxLength(500)]
         public string? Reason { get; set; }
     }
 
     public class AdminResetPasswordRequest
     {
+        [MinLength(8), MaxLength(128)]
         public string? NewPassword { get; set; } // if null or empty, system generates one
     }
 
     public class UpdateUserProfileRequest
     {
+        [MaxLength(100)]
         public string? DisplayName { get; set; }
+        [EmailAddress, MaxLength(255)]
         public string? Email { get; set; }
+        [Url, MaxLength(2048)]
         public string? AvatarUrl { get; set; }
     }
 

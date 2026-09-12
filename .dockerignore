@@ -1,0 +1,22 @@
+# Ignore git and IDE configurations
+.git
+.github
+.vs
+.vscode
+
+# Ignore compiled outputs and local packages
+bin/
+obj/
+publish/
+out/
+api.tar
+wwwroot/uploads/**
+
+# Ignore sensitive settings and secrets
+appsettings.Development.json
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.env
+.env.*

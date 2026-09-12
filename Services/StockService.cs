@@ -1,5 +1,6 @@
 using _3TaC8_PlanningPort.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Net.Http;
 using System.Text.Json;
 
@@ -17,12 +18,14 @@ namespace _3TaC8_PlanningPort.Services
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _config;
         private readonly ApplicationDbContext _context;
+        private readonly IMemoryCache _memoryCache;
 
-        public StockService(HttpClient httpClient, IConfiguration config, ApplicationDbContext context)
+        public StockService(HttpClient httpClient, IConfiguration config, ApplicationDbContext context, IMemoryCache memoryCache)
         {
             _httpClient = httpClient;
             _config = config;
             _context = context;  
+            _memoryCache = memoryCache;
         }
 
         /// <summary>
@@ -51,9 +54,17 @@ namespace _3TaC8_PlanningPort.Services
 
         public async Task<StockPriceResponse> GetCurrentPriceAsync(string symbol, string exchange = "NASDAQ")
         {
+            if (string.IsNullOrWhiteSpace(symbol) || symbol.Length > 20 ||
+                string.IsNullOrWhiteSpace(exchange) || exchange.Length > 20)
+                return new StockPriceResponse();
+
             var apiKey = _config["Finnhub:ApiKey"];
             var finnhubSymbol = BuildFinnhubSymbol(exchange, symbol.ToUpper());
-            var url = $"https://finnhub.io/api/v1/quote?symbol={finnhubSymbol}&token={apiKey}";
+            var memoryKey = $"stock:{exchange.ToUpperInvariant()}:{symbol.ToUpperInvariant()}";
+            if (_memoryCache.TryGetValue(memoryKey, out StockPriceResponse? memoryValue) && memoryValue != null)
+                return memoryValue;
+
+            var url = $"https://finnhub.io/api/v1/quote?symbol={Uri.EscapeDataString(finnhubSymbol)}&token={Uri.EscapeDataString(apiKey ?? string.Empty)}";
 
             try
             {
@@ -66,12 +77,14 @@ namespace _3TaC8_PlanningPort.Services
                 // 'c' = Current Price, 'd' = Change, 'dp' = Percent Change
                 if (json.RootElement.TryGetProperty("c", out var priceElement))
                 {
-                    return new StockPriceResponse
+                    var result = new StockPriceResponse
                     {
                         CurrentPrice = priceElement.GetDecimal(),
                         Change = json.RootElement.TryGetProperty("d", out var change) ? change.GetDecimal() : 0,
                         PercentChange = json.RootElement.TryGetProperty("dp", out var pc) ? pc.GetDecimal() : 0
                     };
+                    _memoryCache.Set(memoryKey, result, TimeSpan.FromMinutes(result.CurrentPrice > 0 ? 1 : 5));
+                    return result;
                 }
             }
             catch (Exception ex)
@@ -79,7 +92,9 @@ namespace _3TaC8_PlanningPort.Services
                 Console.WriteLine($"Error fetching price for {exchange}:{symbol}: {ex.Message}");
             }
 
-            return new StockPriceResponse { CurrentPrice = 0, Change = 0, PercentChange = 0 };
+            var unavailable = new StockPriceResponse { CurrentPrice = 0, Change = 0, PercentChange = 0 };
+            _memoryCache.Set(memoryKey, unavailable, TimeSpan.FromMinutes(1));
+            return unavailable;
         }
 
         public async Task<StockPriceResponse> GetPriceWithSnapshotAsync(string symbol, string exchange = "NASDAQ")

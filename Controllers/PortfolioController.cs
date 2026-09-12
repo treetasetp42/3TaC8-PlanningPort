@@ -3,7 +3,9 @@ using _3TaC8_PlanningPort.DTOs;
 using _3TaC8_PlanningPort.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace _3TaC8_PlanningPort.Controllers
@@ -38,6 +40,7 @@ namespace _3TaC8_PlanningPort.Controllers
 
         // POST: api/Portfolio/add
         [HttpPost("add")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> AddPortfolio([FromQuery] Guid userId, [FromBody] PortfolioRequest request)
         {
             var currentUserIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -63,6 +66,7 @@ namespace _3TaC8_PlanningPort.Controllers
 
         // PUT: api/Portfolio/update/{portfolioId}
         [HttpPut("update/{portfolioId}")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> UpdatePortfolio(Guid portfolioId, [FromBody] PortfolioRequest request)
         {
             var portfolio = await _context.Portfolios.FindAsync(portfolioId);
@@ -81,6 +85,7 @@ namespace _3TaC8_PlanningPort.Controllers
 
         // DELETE: api/Portfolio/delete/{portfolioId}
         [HttpDelete("delete/{portfolioId}")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> DeletePortfolio(Guid portfolioId)
         {
             var portfolio = await _context.Portfolios.FindAsync(portfolioId);
@@ -102,8 +107,11 @@ namespace _3TaC8_PlanningPort.Controllers
 
     public class PortfolioRequest 
     {
+        [Required, StringLength(100, MinimumLength = 1)]
         public string Name { get; set; } = string.Empty;
+        [MaxLength(255)]
         public string? Description { get; set; }
+        [RegularExpression("^#[0-9A-Fa-f]{6}$")]
         public string? ColorCode { get; set; }
     }
 }
