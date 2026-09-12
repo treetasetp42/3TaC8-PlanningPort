@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-09-12
+### Added
+- **Layered API Rate Limiting**: Added a global per-client limit and stricter policies for authentication, registration, password reset, write, upload, and external-service endpoints. Rejected requests return HTTP `429` with retry guidance.
+- **Resource Ownership Enforcement**: Added authenticated-user ownership checks across portfolio, cash, transaction, and watchlist operations to prevent cross-account data access.
+- **Production Request Guardrails**: Added request-body and multipart limits, connection and header timeouts, bounded concurrent connections, outbound HTTP timeouts, and input length/range validation.
+- **Security Response Headers**: Added HSTS and response headers that disable MIME sniffing and framing and restrict referrer, camera, microphone, and geolocation access.
+- **Stock Quote Caching**: Added short-lived in-memory quote caching and safe stale-data fallback behavior to reduce repeated Finnhub requests.
+- **Container Build Exclusions**: Added `.dockerignore` rules to keep development files, build output, local uploads, archives, and secret files out of the Docker build context.
+
+### Changed
+- **JWT Validation**: Production startup now requires a signing key of at least 32 characters and rejects the known `change_this` fallback. Tokens use strict issuer, audience, lifetime, and signature validation with limited clock skew; inactive or banned accounts are rejected during token validation.
+- **Refresh Token Storage**: Refresh and password-reset tokens are stored as hashes. Refresh tokens are rotated on use, active-token counts are bounded, and password changes or resets revoke active sessions.
+- **Registration Defaults**: New local and Google users receive the `Member` role. Permission seeding no longer creates or promotes a default administrator account.
+- **CORS Policy**: Replaced unrestricted cross-origin access with explicit localhost and production frontend origins.
+- **Production Errors**: Added generic production exception and external-provider responses so database details, provider payloads, and secret fragments are not returned to clients.
+- **Admin Operations**: Added explicit permission checks, bounded pagination, validated role/permission updates, and stronger password-reset handling.
+
+### Fixed
+- Prevented unauthenticated or mismatched users from reading or modifying portfolios, balances, transactions, and watchlists belonging to other accounts.
+- Prevented account discovery through the forgot-password response.
+- Escaped password-reset links before inserting them into HTML email.
+- Restricted avatar uploads by size, file extension, and content type, and generated server-controlled file names.
+
 ## [1.1.0] - 2026-05-21
 ### Added
 - **Gemini 2.5 Flash Controller**: Added new `ChatController` to serve as the unified AI conversational gateway.
@@ -18,7 +41,7 @@ All notable changes to this project will be documented in this file.
 - **Dependencies**: Upgraded EF Core, JwtBearer, and Swashbuckle to version 10.0.0.
 - **Security**: Implemented null-safety checks in `Program.cs` and `UserController.cs` to handle missing environment variables gracefully.
 - **Refactoring**: Resolved several null-reference warnings and strict mode compliance issues in `AdminController.cs`.
-+
+
 ## [1.0.0] - 2026-04-26
 ### Added
 - Startup logging/checkpoints to troubleshoot server initialization.
