@@ -6,6 +6,7 @@ using BCrypt.Net;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -24,37 +25,20 @@ namespace _3TaC8_PlanningPort.Controllers
         private readonly IConfiguration _config;
         private readonly IWebHostEnvironment _environment;
         private readonly IEmailService _emailService;
+        private readonly ILogger<UserController> _logger;
 
-        public UserController(ApplicationDbContext context, IConfiguration config, IWebHostEnvironment environment, IEmailService emailService)
+        public UserController(ApplicationDbContext context, IConfiguration config, IWebHostEnvironment environment, IEmailService emailService, ILogger<UserController> logger)
         {
             _context = context;
             _config = config;
             _environment = environment;
             _emailService = emailService;
-        }
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<User>>> GetUsers()
-        {
-            return await _context.Users.ToListAsync();
+            _logger = logger;
         }
 
-        [HttpPost]
-        public async Task<ActionResult<User>> CreateUser(User user)
-        {
-            try
-            {
-                _context.Users.Add(user);
-                await _context.SaveChangesAsync();
-                return Ok(new { message = "User created successfully", userId = user.Id });
-            }
-            catch (Exception ex)
-            {
-                // บรรทัดนี้จะช่วยให้เราเห็น Error จริงๆ ใน Swagger Response
-                return StatusCode(500, ex.InnerException?.Message ?? ex.Message);
-            }
-        }
         [AllowAnonymous]
         [HttpPost("register")]
+        [EnableRateLimiting("register")]
         public async Task<ActionResult> Register(CreateUserRequest request)
         {
             try
@@ -70,6 +54,8 @@ namespace _3TaC8_PlanningPort.Controllers
                 }
 
                 var memberRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Member");
+                if (memberRole == null)
+                    return StatusCode(503, "Registration is temporarily unavailable.");
 
                 var newUser = new User
                 {
@@ -77,7 +63,7 @@ namespace _3TaC8_PlanningPort.Controllers
                     RemotePassword = BCrypt.Net.BCrypt.HashPassword(request.RemotePassword),
                     Email = request.Email,
                     DisplayName = request.RemoteUser,
-                    RoleId = memberRole?.Id ?? 1
+                    RoleId = memberRole.Id
                 };
                 _context.Users.Add(newUser);
 
@@ -102,13 +88,13 @@ namespace _3TaC8_PlanningPort.Controllers
             }
             catch (Exception ex)
             {
-                var errorMsg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
-                Console.WriteLine($"Register Error: {errorMsg}");
-                return StatusCode(500, errorMsg);
+                _logger.LogError(ex, "Registration failed.");
+                return StatusCode(500, "Registration could not be completed.");
             }
         }
         [AllowAnonymous]
         [HttpPost("login")] 
+        [EnableRateLimiting("auth")]
         public async Task<ActionResult> Login(CreateUserRequest request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.RemoteUser == request.RemoteUser);
@@ -116,17 +102,17 @@ namespace _3TaC8_PlanningPort.Controllers
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(request.RemotePassword, user.RemotePassword))
             {
-                try
+                if (user != null)
                 {
-                    // บันทึก Log เมื่อ Login พลาด [cite: 2026-04-02]
-                    _context.UserLogs.Add(new UserLog { UserId = user?.Id ?? Guid.Empty, Action = "Login Failed", IPAddress = ip });
+                    var recentlyLogged = await _context.UserLogs.AnyAsync(log =>
+                        log.UserId == user.Id && log.Action == "Login Failed" && log.IPAddress == ip &&
+                        log.Timestamp > DateTime.UtcNow.AddMinutes(-5));
+                    if (!recentlyLogged)
+                    {
+                        _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Login Failed", IPAddress = ip });
+                        await _context.SaveChangesAsync();
+                    }
                 }
-                catch (Exception logEx)
-                {
-                    // ใส่ Breakpoint ตรงนี้เพื่อดูว่ามันพังเพราะอะไร [cite: 2026-04-02]
-                    Console.WriteLine("Log failed: " + logEx.Message);
-                }
-                await _context.SaveChangesAsync();
                 return Unauthorized("Invalid username or password");
             }
 
@@ -159,10 +145,6 @@ namespace _3TaC8_PlanningPort.Controllers
             var token = GenerateJwtToken(user);
             var refreshToken = await GenerateAndSaveRefreshToken(user);
 
-            // 2. บันทึก Log เมื่อ Login สำเร็จ [cite: 2026-04-02]
-            _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Login Success", IPAddress = ip });
-            await _context.SaveChangesAsync();
-
             // Ban check
             if (user.BannedUntil.HasValue && user.BannedUntil.Value > DateTime.UtcNow)
             {
@@ -174,7 +156,7 @@ namespace _3TaC8_PlanningPort.Controllers
             return Ok(new
             {
                 accessToken = token,
-                refreshToken = refreshToken.Token,
+                refreshToken,
                 userId = user.Id,
                 expiresIn = 60,
                 deleteRequestedAt = user.DeleteRequestedAt,
@@ -184,6 +166,7 @@ namespace _3TaC8_PlanningPort.Controllers
 
         [AllowAnonymous]
         [HttpPost("google-login")]
+        [EnableRateLimiting("auth")]
         public async Task<ActionResult> GoogleLogin(GoogleLoginRequest request)
         {
             try
@@ -220,6 +203,8 @@ namespace _3TaC8_PlanningPort.Controllers
                     else
                     {
                         var memberRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Member");
+                        if (memberRole == null)
+                            return StatusCode(503, "Google registration is temporarily unavailable.");
 
                         // 4. Create new user if they don't exist at all
                         user = new User
@@ -229,7 +214,7 @@ namespace _3TaC8_PlanningPort.Controllers
                             DisplayName = payload.Name,
                             AvatarUrl = payload.Picture,
                             RemotePassword = null, // OAuth users have no local password initially
-                            RoleId = memberRole?.Id ?? 1
+                            RoleId = memberRole.Id
                         };
                         _context.Users.Add(user);
                         _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Google User Registered", IPAddress = ip });
@@ -257,12 +242,6 @@ namespace _3TaC8_PlanningPort.Controllers
                     }
                 }
 
-                // 6. Generate JWT and Return
-                var token = GenerateJwtToken(user);
-                var refreshToken = await GenerateAndSaveRefreshToken(user);
-                _context.UserLogs.Add(new UserLog { UserId = user.Id, Action = "Google Login Success", IPAddress = ip });
-                await _context.SaveChangesAsync();
-
                 // Check if user is disabled
                 if (!user.IsActive)
                 {
@@ -276,12 +255,15 @@ namespace _3TaC8_PlanningPort.Controllers
                     return StatusCode(403, $"Your account is banned until {user.BannedUntil.Value:yyyy-MM-dd HH:mm} UTC. Reason: {reasonText}");
                 }
 
+                // 6. Generate JWT and Return only after account-state checks pass.
+                var token = GenerateJwtToken(user);
+                var refreshToken = await GenerateAndSaveRefreshToken(user);
                 var permissions = await GetUserPermissions(user.Id);
 
                 return Ok(new
                 {
                     accessToken = token,
-                    refreshToken = refreshToken.Token,
+                    refreshToken,
                     userId = user.Id,
                     expiresIn = 60,
                     permissions
@@ -289,12 +271,14 @@ namespace _3TaC8_PlanningPort.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest("Invalid Google Token: " + ex.Message);
+                _logger.LogWarning(ex, "Google login failed.");
+                return BadRequest("Invalid Google token.");
             }
         }
 
         [AllowAnonymous]
         [HttpPost("confirm-google-link")]
+        [EnableRateLimiting("auth")]
         public async Task<ActionResult> ConfirmGoogleLink(GoogleLoginRequest request)
         {
             try
@@ -306,6 +290,12 @@ namespace _3TaC8_PlanningPort.Controllers
 
                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == payload.Email);
                 if (user == null) return NotFound("User not found.");
+                if (!user.IsActive || (user.BannedUntil.HasValue && user.BannedUntil > DateTime.UtcNow))
+                    return StatusCode(403, "This account is not permitted to sign in.");
+
+                var providerAlreadyLinked = await _context.UserOAuths.AnyAsync(uo =>
+                    uo.ProviderName == "Google" && (uo.ProviderKey == payload.Subject || uo.UserId == user.Id));
+                if (providerAlreadyLinked) return Conflict("A Google account is already linked.");
 
                 // Link them
                 _context.UserOAuths.Add(new UserOAuth
@@ -322,11 +312,12 @@ namespace _3TaC8_PlanningPort.Controllers
                 var token = GenerateJwtToken(user);
                 var refreshToken = await GenerateAndSaveRefreshToken(user);
                 var linkPerms = await GetUserPermissions(user.Id);
-                return Ok(new { accessToken = token, refreshToken = refreshToken.Token, userId = user.Id, expiresIn = 60, permissions = linkPerms });
+                return Ok(new { accessToken = token, refreshToken, userId = user.Id, expiresIn = 60, permissions = linkPerms });
             }
             catch (Exception ex)
             {
-                return BadRequest("Failed to link account: " + ex.Message);
+                _logger.LogWarning(ex, "Google account confirmation failed.");
+                return BadRequest("Failed to link account.");
             }
         }
 
@@ -369,7 +360,8 @@ namespace _3TaC8_PlanningPort.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest("Failed to link account: " + ex.Message);
+                _logger.LogWarning(ex, "Google account linking failed.");
+                return BadRequest("Failed to link account.");
             }
         }
 
@@ -401,6 +393,8 @@ namespace _3TaC8_PlanningPort.Controllers
         }
 
         [HttpPut("profile")]
+        [EnableRateLimiting("upload")]
+        [RequestSizeLimit(2_000_000)]
         public async Task<IActionResult> UpdateProfile([FromForm] UpdateProfileRequest request)
         {
             var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -455,6 +449,9 @@ namespace _3TaC8_PlanningPort.Controllers
             }
             else if (request.AvatarFile != null)
             {
+                if (!await IsSupportedAvatarAsync(request.AvatarFile))
+                    return BadRequest("Avatar must be a JPG, PNG, or WEBP image no larger than 2 MB.");
+
                 // Delete old local file if exists
                 DeleteLocalAvatarFile(user.AvatarUrl);
 
@@ -484,6 +481,7 @@ namespace _3TaC8_PlanningPort.Controllers
         }
 
         [HttpPost("change-password")]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
         {
             var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -508,6 +506,8 @@ namespace _3TaC8_PlanningPort.Controllers
             }
 
             user.RemotePassword = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            var activeTokens = await _context.RefreshTokens.Where(rt => rt.UserId == user.Id && rt.Revoked == null).ToListAsync();
+            foreach (var token in activeTokens) token.Revoked = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Password updated successfully" });
@@ -604,6 +604,24 @@ namespace _3TaC8_PlanningPort.Controllers
             }
         }
 
+        private static async Task<bool> IsSupportedAvatarAsync(IFormFile file)
+        {
+            if (file.Length is <= 0 or > 2_000_000) return false;
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (extension is not (".jpg" or ".jpeg" or ".png" or ".webp")) return false;
+
+            var header = new byte[12];
+            await using var stream = file.OpenReadStream();
+            var read = await stream.ReadAsync(header.AsMemory(0, header.Length));
+            if (read < 4) return false;
+
+            var jpeg = header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
+            var png = read >= 8 && header.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+            var webp = read >= 12 && Encoding.ASCII.GetString(header, 0, 4) == "RIFF" && Encoding.ASCII.GetString(header, 8, 4) == "WEBP";
+            return jpeg || png || webp;
+        }
+
         private async Task DestroyAccountData(User user)
         {
             // Delete the local avatar file from disk if present
@@ -616,7 +634,7 @@ namespace _3TaC8_PlanningPort.Controllers
             user.DisplayName = "[deleted]";
             user.AvatarUrl = null;
             user.RemotePassword = null;
-            user.RoleId = memberRole?.Id ?? 1;
+            if (memberRole != null) user.RoleId = memberRole.Id;
             user.DeleteRequestedAt = null;
 
             // Remove all OAuth links for this user (Quota cleanup)
@@ -657,21 +675,24 @@ namespace _3TaC8_PlanningPort.Controllers
         new Claim(ClaimTypes.Name, user.RemoteUser)
     };
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"] ?? "default_jwt_secret_key_change_this_in_production"));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.Now.AddMinutes(double.Parse(_config["Jwt:DurationInMinutes"] ?? "60")),
+                expires: DateTime.UtcNow.AddMinutes(double.Parse(_config["Jwt:DurationInMinutes"] ?? "15")),
                 signingCredentials: creds
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        private async Task<RefreshToken> GenerateAndSaveRefreshToken(User user)
+        private static string HashToken(string token) =>
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+        private async Task<string> GenerateAndSaveRefreshToken(User user)
         {
             var randomNumber = new byte[32];
             using var rng = RandomNumberGenerator.Create();
@@ -680,29 +701,50 @@ namespace _3TaC8_PlanningPort.Controllers
 
             var refreshToken = new RefreshToken
             {
-                Token = refreshTokenString,
+                Token = HashToken(refreshTokenString),
                 UserId = user.Id,
                 Expires = DateTime.UtcNow.AddDays(7), // 7 days expiry
                 Created = DateTime.UtcNow
             };
 
+            var oldTokens = await _context.RefreshTokens
+                .Where(rt => rt.UserId == user.Id && (rt.Revoked != null || rt.Expires <= DateTime.UtcNow))
+                .ToListAsync();
+            _context.RefreshTokens.RemoveRange(oldTokens);
+
+            var excessActiveTokens = await _context.RefreshTokens
+                .Where(rt => rt.UserId == user.Id && rt.Revoked == null && rt.Expires > DateTime.UtcNow)
+                .OrderByDescending(rt => rt.Created)
+                .Skip(4)
+                .ToListAsync();
+            foreach (var token in excessActiveTokens) token.Revoked = DateTime.UtcNow;
+
             _context.RefreshTokens.Add(refreshToken);
             await _context.SaveChangesAsync();
 
-            return refreshToken;
+            return refreshTokenString;
         }
 
         [AllowAnonymous]
         [HttpPost("refresh-token")]
+        [EnableRateLimiting("auth")]
         public async Task<ActionResult> RefreshToken(RefreshTokenRequest request)
         {
             var refreshToken = await _context.RefreshTokens
                 .Include(rt => rt.User)
-                .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken);
+                .FirstOrDefaultAsync(rt => rt.Token == HashToken(request.RefreshToken));
 
             if (refreshToken == null || !refreshToken.IsActive)
             {
                 return Unauthorized("Invalid or expired refresh token");
+            }
+
+            if (!refreshToken.User.IsActive ||
+                (refreshToken.User.BannedUntil.HasValue && refreshToken.User.BannedUntil > DateTime.UtcNow))
+            {
+                refreshToken.Revoked = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return Unauthorized("This account is not permitted to refresh tokens.");
             }
 
             // Revoke the old token (token rotation)
@@ -717,7 +759,7 @@ namespace _3TaC8_PlanningPort.Controllers
             return Ok(new
             {
                 accessToken = newAccessToken,
-                refreshToken = newRefreshToken.Token,
+                refreshToken = newRefreshToken,
                 userId = refreshToken.User.Id,
                 expiresIn = 60,
                 permissions = refreshPerms
@@ -726,6 +768,7 @@ namespace _3TaC8_PlanningPort.Controllers
 
         [AllowAnonymous]
         [HttpPost("forgot-password")]
+        [EnableRateLimiting("password-reset")]
         public async Task<ActionResult> ForgotPassword(ForgotPasswordRequest request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
@@ -735,16 +778,19 @@ namespace _3TaC8_PlanningPort.Controllers
                 return Ok(new { message = "If the email is registered, a reset link has been sent." });
             }
 
+            if (!string.IsNullOrEmpty(user.PasswordResetToken) && user.PasswordResetTokenExpiry > DateTime.UtcNow)
+                return Ok(new { message = "If the email is registered, a reset link has been sent." });
+
             // Generate Token
             var token = Guid.NewGuid().ToString("N");
-            user.PasswordResetToken = token;
+            user.PasswordResetToken = HashToken(token);
             user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1); // 1 hour expiry
 
             await _context.SaveChangesAsync();
 
             // Send Email
             var frontendUrl = _config["FrontendUrl"] ?? "http://localhost:5173";
-            var resetLink = $"{frontendUrl}/reset-password?token={token}&email={user.Email}";
+            var resetLink = $"{frontendUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email!)}";
             await _emailService.SendPasswordResetEmailAsync(user.Email!, resetLink);
 
             return Ok(new { message = "If the email is registered, a reset link has been sent." });
@@ -752,9 +798,11 @@ namespace _3TaC8_PlanningPort.Controllers
 
         [AllowAnonymous]
         [HttpPost("reset-password")]
+        [EnableRateLimiting("auth")]
         public async Task<ActionResult> ResetPassword(ResetPasswordRequest request)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email && u.PasswordResetToken == request.Token);
+            var tokenHash = HashToken(request.Token);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email && u.PasswordResetToken == tokenHash);
 
             if (user == null || user.PasswordResetTokenExpiry < DateTime.UtcNow)
             {
@@ -765,6 +813,9 @@ namespace _3TaC8_PlanningPort.Controllers
             user.RemotePassword = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             user.PasswordResetToken = null; // Consume token
             user.PasswordResetTokenExpiry = null;
+
+            var resetActiveTokens = await _context.RefreshTokens.Where(rt => rt.UserId == user.Id && rt.Revoked == null).ToListAsync();
+            foreach (var token in resetActiveTokens) token.Revoked = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 

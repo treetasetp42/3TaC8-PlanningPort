@@ -2,13 +2,18 @@ using _3TaC8_PlanningPort.Data;
 using _3TaC8_PlanningPort.DTOs;
 using _3TaC8_PlanningPort.Entities;
 using _3TaC8_PlanningPort.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace _3TaC8_PlanningPort.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class TransactionController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -19,10 +24,40 @@ namespace _3TaC8_PlanningPort.Controllers
             _stockService = stockService;
         }
 
+        private async Task<bool> OwnsPortfolioAsync(Guid portfolioId)
+        {
+            var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return Guid.TryParse(userIdValue, out var userId) &&
+                await _context.Portfolios.AnyAsync(p => p.Id == portfolioId && p.UserId == userId);
+        }
+
+        private static bool IsValidSymbol(string symbol) =>
+            !string.IsNullOrWhiteSpace(symbol) && Regex.IsMatch(symbol, @"^[A-Za-z0-9._-]{1,20}$");
+
         // POST: api/Transaction/add
         [HttpPost("add")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> AddTransaction([FromQuery] Guid portfolioId, [FromBody] TransactionRequest request)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (await _context.Transactions.CountAsync(t => t.PortfolioId == portfolioId) >= 5_000)
+                return BadRequest("Transaction limit reached for this portfolio.");
+
+            var upperSymbol = request.Symbol.ToUpperInvariant();
+            var upperExchange = request.Exchange.ToUpperInvariant();
+            var symbolExists = await _context.Transactions.AnyAsync(t =>
+                t.PortfolioId == portfolioId && t.Symbol == upperSymbol && t.Exchange == upperExchange);
+            if (!symbolExists)
+            {
+                var distinctSymbols = await _context.Transactions
+                    .Where(t => t.PortfolioId == portfolioId)
+                    .Select(t => new { t.Symbol, t.Exchange })
+                    .Distinct()
+                    .CountAsync();
+                if (distinctSymbols >= 50)
+                    return BadRequest("Asset limit reached for this portfolio.");
+            }
+
             var wallet = await _context.CashWallets.FirstOrDefaultAsync(w => w.PortfolioId == portfolioId);
             if (wallet == null)
             {
@@ -41,7 +76,7 @@ namespace _3TaC8_PlanningPort.Controllers
             {
                 // Calculate Realized Profit based on Weighted Average Cost
                 var txs = await _context.Transactions
-                    .Where(t => t.PortfolioId == portfolioId && t.Symbol == request.Symbol.ToUpper() && t.Exchange == request.Exchange.ToUpper())
+                    .Where(t => t.PortfolioId == portfolioId && t.Symbol == upperSymbol && t.Exchange == upperExchange)
                     .ToListAsync();
                 
                 var totalBuyQty = txs.Where(t => t.Type == "Buy").Sum(t => t.Quantity);
@@ -57,14 +92,14 @@ namespace _3TaC8_PlanningPort.Controllers
             var transaction = new Transaction
             {
                 PortfolioId = portfolioId,
-                Symbol = request.Symbol.ToUpper(),
+                Symbol = upperSymbol,
                 Type = request.Type,
                 Quantity = request.Quantity,
                 PricePerUnit = request.PricePerUnit,
                 Currency = request.Currency,
                 AssetType = request.AssetType,
                 Subtype = request.Subtype,
-                Exchange = request.Exchange.ToUpper(),
+                Exchange = upperExchange,
                 TransactionDate = request.TransactionDate
             };
 
@@ -80,6 +115,8 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpGet("summary/{portfolioId}/{symbol}")]
         public async Task<ActionResult> GetStockSummary(Guid portfolioId, string symbol)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (!IsValidSymbol(symbol)) return BadRequest("Invalid symbol.");
             var transactions = await _context.Transactions
                 .Where(t => t.PortfolioId == portfolioId && t.Symbol == symbol.ToUpper())
                 .ToListAsync();
@@ -103,8 +140,11 @@ namespace _3TaC8_PlanningPort.Controllers
 
         // GET: api/Transaction/portfolio/{portfolioId}/{symbol}
         [HttpGet("portfolio/{portfolioId}/{symbol}")]
+        [EnableRateLimiting("expensive")]
         public async Task<ActionResult> GetPortfolioDetail(Guid portfolioId, string symbol)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (!IsValidSymbol(symbol)) return BadRequest("Invalid symbol.");
             var txs = await _context.Transactions
                 .Where(t => t.PortfolioId == portfolioId && t.Symbol == symbol.ToUpper())
                 .ToListAsync();
@@ -140,6 +180,7 @@ namespace _3TaC8_PlanningPort.Controllers
         [HttpGet("history/{portfolioId}")]
         public async Task<ActionResult> GetTransactionHistory(Guid portfolioId)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
             var txs = await _context.Transactions
                 .Where(t => t.PortfolioId == portfolioId)
                 .OrderByDescending(t => t.TransactionDate)
@@ -150,8 +191,10 @@ namespace _3TaC8_PlanningPort.Controllers
 
         // GET: api/Transaction/dashboard/{portfolioId}
         [HttpGet("dashboard/{portfolioId}")]
+        [EnableRateLimiting("expensive")]
         public async Task<IActionResult> GetDashboardSummary(Guid portfolioId)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
             var allTxs = await _context.Transactions
                 .Where(t => t.PortfolioId == portfolioId)
                 .ToListAsync();
@@ -237,8 +280,11 @@ namespace _3TaC8_PlanningPort.Controllers
 
         // PUT: api/Transaction/update
         [HttpPut("update")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> UpdateTransaction([FromQuery] Guid portfolioId, [FromQuery] string symbol, [FromBody] TransactionRequest request)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (!IsValidSymbol(symbol)) return BadRequest("Invalid symbol.");
             var latestTx = await _context.Transactions
                 .Where(t => t.PortfolioId == portfolioId && t.Symbol == symbol.ToUpper())
                 .OrderByDescending(t => t.TransactionDate)
@@ -272,8 +318,11 @@ namespace _3TaC8_PlanningPort.Controllers
  
         // DELETE: api/Transaction/delete
         [HttpDelete("delete")]
+        [EnableRateLimiting("write")]
         public async Task<ActionResult> DeleteTransaction([FromQuery] Guid portfolioId, [FromQuery] string symbol)
         {
+            if (!await OwnsPortfolioAsync(portfolioId)) return Forbid();
+            if (!IsValidSymbol(symbol)) return BadRequest("Invalid symbol.");
             var txs = await _context.Transactions
                 .Where(t => t.PortfolioId == portfolioId && t.Symbol == symbol.ToUpper())
                 .ToListAsync();

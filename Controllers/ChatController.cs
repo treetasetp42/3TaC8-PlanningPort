@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Text;
 using System.Text.Json;
 
@@ -6,7 +7,7 @@ namespace _3TaC8_PlanningPort.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class ChatController(HttpClient httpClient, IConfiguration configuration) : ControllerBase
+    public class ChatController(IHttpClientFactory httpClientFactory, IConfiguration configuration, ILogger<ChatController> logger) : ControllerBase
     {
         // สั่งอ่านค่าจาก configuration มาเก็บไว้ที่ Field ได้เลยโดยไม่ต้องมีฟังก์ชัน Constructor
         private readonly string _apiKey = 
@@ -15,10 +16,13 @@ namespace _3TaC8_PlanningPort.Controllers
             throw new ArgumentNullException("Gemini API Key is missing. Please set 'Gemini:ApiKey' or environment variable 'GEMINI_API_KEY'.");
 
         [HttpPost]
-        public async Task<IActionResult> AskBot([FromBody] ChatRequest request)
+        [EnableRateLimiting("expensive")]
+        public async Task<IActionResult> AskBot([FromBody] ChatRequest request, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.Message))
                 return BadRequest("Message cannot be empty");
+            if (request.Message.Length > 1_000 || request.CurrentPath?.Length > 200)
+                return BadRequest("Message or path is too long.");
 
             // 1. กำหนด System Instruction เพื่อตีกรอบให้บอทตอบเฉพาะเรื่องในเว็บ และใช้น้ำเสียงผู้หญิง (ค่ะ/นะคะ)
             var systemInstructionBuilder = new StringBuilder();
@@ -49,16 +53,15 @@ namespace _3TaC8_PlanningPort.Controllers
 
                 // เปลี่ยนมาใช้ gemini-2.5-flash เพื่อความเสถียรและหลีกเลี่ยงข้อจำกัดการใช้งานหนาแน่นของรุ่น Lite
                 string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
-                var response = await httpClient.PostAsync(url, content);
+                var response = await httpClientFactory.CreateClient("Gemini").PostAsync(url, content, cancellationToken);
 
                 // ดึงข้อความดิบที่ Google ตอบกลับมาก่อน
                 var jsonString = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    string maskedKey = string.IsNullOrEmpty(_apiKey) ? "None" : (_apiKey.Length > 8 ? $"{_apiKey[..4]}...{_apiKey[^4..]}" : "***");
-                    // 🛠️ จุดสำคัญ: โยน Error ของ Google กลับไปที่ Frontend ให้เราเห็น พร้อม Masked Key สำหรับการดีบั๊ก
-                    return StatusCode((int)response.StatusCode, $"Gemini Error (Key: {maskedKey}): {jsonString}");
+                    logger.LogWarning("Gemini returned status {StatusCode}.", response.StatusCode);
+                    return StatusCode(StatusCodes.Status502BadGateway, "The AI service is temporarily unavailable.");
                 }
 
                 // 4. แกะ JSON เอาเฉพาะข้อความตอบกลับของ AI ออกมา
@@ -74,7 +77,8 @@ namespace _3TaC8_PlanningPort.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                logger.LogError(ex, "Gemini request failed.");
+                return StatusCode(StatusCodes.Status502BadGateway, "The AI service is temporarily unavailable.");
             }
         }
     }
